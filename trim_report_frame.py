@@ -279,36 +279,88 @@ def getDescAreaInfo(img, inv=False):
     # 境界線を見つける
     contours, hierarchy = cv2.findContours(
         img_gray2, 
-        cv2.RETR_EXTERNAL, 
+        cv2.RETR_TREE, 
         cv2.CHAIN_APPROX_SIMPLE
         ) 
-
-    # 一番外側の枠を分類する
+    
+    # 第一階層の輪郭を追って情報を得る
     trim_offset = 10
     info = []
-    index = 0
-    for i, contour in enumerate(contours):
-        # 小さな領域はマークとみなして、スキップする
-        area = cv2.contourArea(contour)
-        # print(f"area = {area}")
-        if (area < img_w * img_h / 500):
-            continue
-            
-        # 領域の位置や大きさで分類する
-        x,y,w,h = cv2.boundingRect(contour)
-        detect_img = img[max(y-trim_offset, 0):min(y+h+trim_offset, img_h), max(x-trim_offset, 0):min(x+w+trim_offset, img_w)]
-        x_rel = x / img_w
-        y_rel = y / img_h
-        w_rel = w / img_w
-        h_rel = h / img_h
-        index += 1
-        area_info = {"name": f"name{index}", "area": {"x:": x_rel, "y": y_rel, "width": w_rel, "height": h_rel }, "type": "text"}
-        cv2.rectangle(img_debug, (x, y), (x+w, y+h), (0, 255, 0), trim_offset)
-        cv2.putText(img_debug, f"info: {area_info}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
-        info.append(area_info)
-    
+    cont_index = 0
+    while (cont_index != -1):
+        area_info = get_rectangle_info(img_gray2, contours, hierarchy, cont_index, 0, img_debug)
+        if area_info is not None:
+            info.append(area_info)
+        cont_index = hierarchy[0][cont_index][0]   # 次の領域
+
     util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
     return (info)
+
+def get_rectangle_info(image, contours, hierarchy, target_cont_index, level, img_debug):
+    """
+    矩形領域の情報をJSON形式で返す
+    Args:
+        image: 入力画像
+        contours: 輪郭のリスト
+        hierarchy: 輪郭の階層情報
+        target_cont_index: 対象の輪郭のインデックス
+        level: 階層レベル
+
+    Returns:
+        矩形領域の情報 (JSON形式)
+    """
+
+    trim_offset = 10
+    color = [(0, 255, 0), (255, 0, 0), (0, 0, 255)]
+
+    # 輪郭のインデックスが無効の場合は、Noneを返す
+    if target_cont_index == -1:
+        return None
+
+    # 2階層を超えた場合は、Noneを返す
+    if level >= 2:
+        return None
+    
+    # 自身の領域情報を得る
+    contour = contours[target_cont_index]
+    area = cv2.contourArea(contour)
+    x,y,w,h = cv2.boundingRect(contour)
+    img_w = image.shape[1]
+    img_h = image.shape[0]
+    x_rel = x / img_w
+    y_rel = y / img_h
+    w_rel = w / img_w
+    h_rel = h / img_h
+    
+    # 小さい領域は無視する
+    if ((w_rel < 0.01) or (h_rel < 0.01)):
+        print(f"skipped small area {x},{y},{w},{h}")
+        return None
+
+    # 子輪郭の情報リストを得る
+    child_cont_index = hierarchy[0][target_cont_index][2]
+    child_info_list = []
+    while (child_cont_index != -1):
+        child_info = get_rectangle_info(image, contours, hierarchy, child_cont_index, level + 1, img_debug)
+        if child_info is not None:
+            child_info_list.append(child_info)
+        child_cont_index = hierarchy[0][child_cont_index][0]   # 次の領域
+
+    detect_img = image[max(y-trim_offset, 0):min(y+h+trim_offset, img_h), max(x-trim_offset, 0):min(x+w+trim_offset, img_w)]
+
+    # JSON形式で領域情報を作成する
+    info = {
+        "name": f"name{target_cont_index}",
+        "area": {"x:": x_rel, "y": y_rel, "width": w_rel, "height": h_rel }, 
+        "type": "text", 
+        "children": child_info_list
+    }
+    
+    cv2.rectangle(img_debug, (x, y), (x+w, y+h), color[level], trim_offset)
+    cv2.putText(img_debug, f"info: {info}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+    print(f"area={info}")
+    
+    return info
 
 
 def getDescArea(img, inv=False):
