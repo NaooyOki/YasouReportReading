@@ -261,6 +261,73 @@ def trim_inner_mark2(img):
     return(new_img)
 
 
+def getDescArea(img, inv=False):
+    """
+    レポート画像から、記述画像の部分を取り出す
+    @param img: レポートの画像イメージ(白地)
+    @param inv:bool 
+    """
+    # 画像処理用のイメージを作る
+    img_debug = img.copy()
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, img_gray2 = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    img_w = img_gray2.shape[1]
+    img_h = img_gray2.shape[0]
+    util.debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
+
+    # 境界線を見つける
+    contours, hierarchy = cv2.findContours(
+        img_gray2, 
+        cv2.RETR_EXTERNAL, 
+        cv2.CHAIN_APPROX_SIMPLE
+        ) 
+
+    # 一番外側の枠を分類する
+    main = None
+    head = None
+    place = None
+    unknown_area = []
+    trim_offset = 10
+    for i, contour in enumerate(contours):
+        # 小さな領域はマークとみなして、スキップする
+        area = cv2.contourArea(contour)
+        # print(f"area = {area}")
+        if (area < img_w * img_h / 500):
+            continue
+            
+        # 領域の位置や大きさで分類する
+        x,y,w,h = cv2.boundingRect(contour)
+        detect_img = img[max(y-trim_offset, 0):min(y+h+trim_offset, img_h), max(x-trim_offset, 0):min(x+w+trim_offset, img_w)]
+        #pt1 = (max(x-trim_offset, 0), max(y-trim_offset, 0))
+        #pt2 = (min(x+w+trim_offset, img_w), )
+        if ((w > img_w * 0.5) and (h > img_h * 0.6)):
+            # メイン記述領域
+            main = detect_img
+            cv2.rectangle(img_debug, (x, y), (x+w, y+h), (0, 255, 0), trim_offset)
+            cv2.putText(img_debug, f"main: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+        elif((x < img_w * 0.2) and (y < img_h * 0.1) and (w > img_w * 0.3) and (h < img_h * 0.1)):
+            # ヘッダ記述領域
+            # head = img[pt1[1]:pt2[1], pt1[0]:pt2[0]]
+            head = detect_img
+            cv2.rectangle(img_debug,  (x, y), (x+w, y+h), (0, 0, 255), trim_offset)
+            cv2.putText(img_debug, f"head: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+        elif((x > img_w * 0.6) and (y < img_h * 0.1) and (w > img_w * 0.1) and (h < img_h * 0.1)):
+            # 場所記述領域
+            place = detect_img
+            cv2.rectangle(img_debug,  (x, y), (x+w, y+h), (0, 255, 255), trim_offset)
+            cv2.putText(img_debug, f"place: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+        else:
+            # 不明な場所
+            print(f"分類できない領域が見つかりました  ({x},{y}) {w}x{h}")
+            unknown_area.append(contour)
+            cv2.drawContours(img_debug, contours, i, (255, 0, 0), 2)
+            cv2.putText(img_debug, f"unknown: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+    
+        util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
+    return (main, head, place)
+
+
+
 # main
 g_skipText=False
 if __name__ == '__main__':
@@ -280,11 +347,8 @@ if __name__ == '__main__':
                 files = glob.glob(arg)
                 for file in files:
                     img = cv2.imread(file)
-                    #cv2.imshow("before", img)
                     trim_img = trim_paper_frame(img)
-                    #cv2.imshow("trimed", trim_img)
                     trim_img2 = trim_inner_mark2(trim_img)
-                    #cv2.imshow("trimed inner frame", trim_img2)
-                    #cv2.waitKey()
+                    main, head, place = getDescArea(trim_img2)
 
 
