@@ -261,6 +261,56 @@ def trim_inner_mark2(img):
     return(new_img)
 
 
+def getDescAreaInfo(img, inv=False):
+    """
+    記録用のテンプレート画像から、区画情報のスキーマーを計算する
+    @param img: レポートの画像イメージ(白地)
+    @param inv:bool 画像を反転させる (True:黒地に白の画像の場合、False:白地に黒の画像の場合)
+    @return 区画情報のスキーマー(JSON形式) 
+    """
+    # 画像処理用のイメージを作る
+    img_debug = img.copy()
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, img_gray2 = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    img_w = img_gray2.shape[1]
+    img_h = img_gray2.shape[0]
+    util.debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
+
+    # 境界線を見つける
+    contours, hierarchy = cv2.findContours(
+        img_gray2, 
+        cv2.RETR_EXTERNAL, 
+        cv2.CHAIN_APPROX_SIMPLE
+        ) 
+
+    # 一番外側の枠を分類する
+    trim_offset = 10
+    info = []
+    index = 0
+    for i, contour in enumerate(contours):
+        # 小さな領域はマークとみなして、スキップする
+        area = cv2.contourArea(contour)
+        # print(f"area = {area}")
+        if (area < img_w * img_h / 500):
+            continue
+            
+        # 領域の位置や大きさで分類する
+        x,y,w,h = cv2.boundingRect(contour)
+        detect_img = img[max(y-trim_offset, 0):min(y+h+trim_offset, img_h), max(x-trim_offset, 0):min(x+w+trim_offset, img_w)]
+        x_rel = x / img_w
+        y_rel = y / img_h
+        w_rel = w / img_w
+        h_rel = h / img_h
+        index += 1
+        area_info = {"name": f"name{index}", "area": {"x:": x_rel, "y": y_rel, "width": w_rel, "height": h_rel }, "type": "text"}
+        cv2.rectangle(img_debug, (x, y), (x+w, y+h), (0, 255, 0), trim_offset)
+        cv2.putText(img_debug, f"info: {area_info}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+        info.append(area_info)
+    
+    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
+    return (info)
+
+
 def getDescArea(img, inv=False):
     """
     レポート画像から、記述画像の部分を取り出す
@@ -349,6 +399,11 @@ if __name__ == '__main__':
                     img = cv2.imread(file)
                     trim_img = trim_paper_frame(img)
                     trim_img2 = trim_inner_mark2(trim_img)
+                    info = getDescAreaInfo(trim_img2)
+                    print(f"schema info: {info}")
+                    # JSONデータをファイルに書き込み
+                    with open("./tmp/area_info.json", "w") as f:
+                        json.dump(info, f)
                     main, head, place = getDescArea(trim_img2)
 
 
