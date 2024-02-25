@@ -55,27 +55,23 @@ def trimAsRectangle(img, top_left, top_right, bot_left, bot_right):
     @param bot_right:(x, y)  トリミング対象の右下の位置
     """
 
-    w_ratio = 1.0   # 縦横比 1.0以上は横長
+    ratio = 1.0   # 縦横比 1.0以上は横長
 
-    #　幅取得
-    o_width = np.linalg.norm(top_right - top_left)
-    o_width = math.floor(o_width * w_ratio)
-    
-    #　高さ取得
-    o_height = np.linalg.norm(bot_left - top_left)
-    o_height = math.floor(o_height)
+    #　変換後の区画の幅と高さを計算する。左上を基準にする。
+    width = math.floor(np.linalg.norm(top_right - top_left) * ratio)
+    height = math.floor(np.linalg.norm(bot_left - top_left) * ratio)
     
     # 変換前の4点の座標
     src = np.float32([top_left, top_right, bot_left, bot_right])
     
     # 変換後の4点の座標
-    dst = np.float32([[0, 0],[o_width, 0],[0, o_height],[o_width, o_height]])
+    dst = np.float32([[0, 0],[width, 0],[0, height],[width, height]])
     
     # 変換行列
     M = cv2.getPerspectiveTransform(src, dst)
     
     # 射影変換・透視変換する
-    output = cv2.warpPerspective(img, M,(o_width, o_height))
+    output = cv2.warpPerspective(img, M,(width, height))
     
     return(output)
 
