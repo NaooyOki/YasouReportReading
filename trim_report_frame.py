@@ -9,6 +9,76 @@ import sys
 import utility as util
 import inspect
 
+class MyClass:
+  def __init__(self, name, age):
+    self.name = name
+    self.age = age
+
+    
+class CellInfo:
+    def __init__(self, index, rect, format='text', col_cluster_id=0, row_cluster_id=0):
+        self.cell_index = index
+        self.cell_rect = rect
+        self.cell_format = format
+        self.col_cluster_id = col_cluster_id
+        self.row_cluster_id = row_cluster_id
+
+    def __str__(self):
+        return str(self.__dict__)
+    
+    def dump_json(self):
+        return(json.dump(self.__dict__))
+
+    # セルの形式
+    FORMAT_TEXT = 'text'   # テキスト形式のセル
+    FORMAT_MARK = 'mark'   # マル印形式のセル
+    FORMAT_TABLE = 'table'  # 子供のセルを囲んでいるセル
+
+    NEAR_VALUE = 10   # 1%の違い以内なら、同じ位置や長さとみなす
+    def __eq__(self, other):
+        return math.isclose(self.rect[0], other.rect[0], abs_tol=CellInfo.NEAR_VALUE) and math.isclose(self.rect[2], other.rect[2], abs_tol=CellInfo.NEAR_VALUE)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+    
+    def __lt__(self, other):
+        if (self.rect[0] - other.rect[0] < -CellInfo.NEAR_VALUE) : return True
+        if (math.isclose(self.rect[0], other.rect[0], abs_tol=CellInfo.NEAR_VALUE) and (self.rect[2] - other.rect[2] < -CellInfo.NEAR_VALUE)): return True
+        return False
+
+class ClusterInfo:
+    # クラスターの方向
+    DIRECT_COL = 'direct_col'  
+    DIRECT_ROW = 'direct_row'
+
+    def __init__(self, direction, pos=0, len=0):
+        self.direction = direction  # クラスターの方向(COLかROW)
+        self.cells = []             # クラスターに属するセルのリスト
+        self.pos = pos
+        self.len = len
+
+    def get_rect(self):
+        top_cell = min(self.cells)
+
+class FrameInfo:
+    # フレームの情報。フレームとは、複数のセルと縦と横のクラスター情報から構成される。
+    def __init__(self, rect):
+        self.rect = rect
+        self.cells = []
+        self.col_cluster_list = []
+        self.row_cluster_list = []
+
+    def __str__(self):
+        return str(self.__dict__)        
+
+class MyEncoder(json.JSONEncoder):
+  def default(self, obj):
+    if isinstance(obj, CellInfo):
+      return obj.dump_json()
+    return super().default(obj)
+
+
+
 def trim_paper_frame(img):
     """
     黒地に映ったA4用紙の輪郭を検出する
@@ -261,6 +331,87 @@ def trim_inner_mark2(img):
     return(new_img)
 
 
+def getDescAreaInfo2(img, inv=False):
+    """
+    記録用のテンプレート画像から、区画情報のスキーマーを計算する
+    @param img: レポートの画像イメージ(白地)
+    @param inv:bool 画像を反転させる (True:黒地に白の画像の場合、False:白地に黒の画像の場合)
+    @return 区画情報 
+    """
+    # 画像処理用のイメージを作る
+    img_debug = img.copy()
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, img_gray2 = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    util.debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
+
+    cell_list = getFrameInfo(img_gray2, img_debug)
+
+    col_cluster_list = []
+    for cell in cell_list:
+        i = col_cluster_list.index(cell.rect)
+        if (i)
+
+    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
+    return frameInfo
+
+from typing import List
+def getFrameInfo(img_gray2, img_debug) -> List[CellInfo]:
+    img_w = img_gray2.shape[1]
+    img_h = img_gray2.shape[0]
+
+    # 外側の輪郭を見つける
+    contours, hierarchy = cv2.findContours(
+        img_gray2, 
+        cv2.RETR_EXTERNAL, 
+        cv2.CHAIN_APPROX_SIMPLE
+        ) 
+    
+    # 第一階層の輪郭を追って情報を得る
+    trim_offset = 10
+    info = []
+    cont_index = 0
+    while (cont_index != -1):
+        trim_offset = 10
+        color = [(0, 255, 0), (255, 0, 0), (0, 0, 255)]
+
+        # 領域情報を得る
+        contour = contours[cont_index]
+        area = cv2.contourArea(contour)
+        x,y,w,h = cv2.boundingRect(contour)
+        img_w = img_gray2.shape[1]
+        img_h = img_gray2.shape[0]
+        x_rel = int(x * 1000 / img_w)
+        y_rel = int(y * 1000 / img_h)
+        w_rel = int(w * 1000 / img_w)
+        h_rel = int(h * 1000 / img_h)
+        
+        # 大きな領域だけを処理する
+        if ((w_rel > 10) and (h_rel > 10)):
+            # 領域情報を作成する
+            cell_info = CellInfo(cont_index, (x_rel, y_rel, w_rel, h_rel), CellInfo.FORMAT_TEXT, 0, 0)
+            info.append(cell_info)
+
+            #test
+            print(f"cell_info:{cell_info}")
+            #json_data = json.dumps(cell_info.__dict__)
+            #print(f"json_cell_info: {json_data}")
+            
+            cv2.rectangle(img_debug, (x, y), (x+w, y+h), (0, 255, 0), trim_offset)
+            cv2.putText(img_debug, f"info: {cell_info}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+        else:
+            print(f"skipped small area {x},{y},{w},{h}")
+
+        cont_index = hierarchy[0][cont_index][0]   # 次の領域
+
+    print(f"info:{[i.__dict__ for i in info]}")
+    return (info)
+    
+    
+
+
+
+
+
 def getDescAreaInfo(img, inv=False):
     """
     記録用のテンプレート画像から、区画情報のスキーマーを計算する
@@ -433,6 +584,29 @@ def getDescArea(img, inv=False):
 # main
 g_skipText=False
 if __name__ == '__main__':
+    
+    info_list = []
+    info1 = CellInfo(0, (100, 100, 200, 200))
+    info_list.append(info1)
+    info2 = CellInfo(1, 200)
+    info_list.append(info2)
+    info3 = CellInfo(2, 300)
+    info_list.append(info3)
+    print(f"info1:{info1}")
+    print(f"info2:{info2}")
+    print(f"info3:{info3}")
+    print(f"info_list:{info_list}")
+
+    json1 = json.dumps(info1.__dict__)
+    print(f"json1:{json1}")
+    json2 = json.dumps(info2.__dict__)
+    print(f"json1:{json2}")
+    json3 = json.dumps(info3.__dict__)
+    print(f"json1:{json3}")
+
+    json_list = json.dumps([info.__dict__ for info in info_list])
+    print(f"json_list:{json_list}")
+
     args = sys.argv
     if 2 > len(args):
         print(f"Usage {args[0]} [--skipText] image_file")
@@ -451,11 +625,18 @@ if __name__ == '__main__':
                     img = cv2.imread(file)
                     trim_img = trim_paper_frame(img)
                     trim_img2 = trim_inner_mark2(trim_img)
-                    info = getDescAreaInfo(trim_img2)
-                    print(f"schema info: {info}")
+                    info = getDescAreaInfo2(trim_img2)
+                    dict_info = [instance.__dict__ for instance in info]
+                    print(f"schema info: {dict_info}")
+
+                    json_list = json.dumps([i.__dict__ for i in info])
+                    print(f"json_list:{json_list}")
+                    json_data = json.dumps(dict_info, cls=MyEncoder)
+                    print(f"json_data = {json_data}")
+
                     # JSONデータをファイルに書き込み
                     with open("./tmp/area_info.json", "w") as f:
-                        json.dump(info, f)
+                        json.dump(dict_info, f)
                     main, head, place = getDescArea(trim_img2)
 
 
