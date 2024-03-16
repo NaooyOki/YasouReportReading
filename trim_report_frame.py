@@ -8,33 +8,27 @@ import os
 import sys
 import utility as util
 import inspect
+from dataclasses import dataclass, field, asdict
+from typing import ClassVar
+from dataclasses_json import dataclass_json, config
+from marshmallow import Schema, fields
 
-class MyClass:
-  def __init__(self, name, age):
-    self.name = name
-    self.age = age
-
-    
+   
+@dataclass_json
+@dataclass
 class CellInfo:
-    def __init__(self, index, rect, format='text', col_cluster_id=0, row_cluster_id=0):
-        self.cell_index = index
-        self.cell_rect = rect
-        self.cell_format = format
-        self.col_cluster_id = col_cluster_id
-        self.row_cluster_id = row_cluster_id
-
-    def __str__(self):
-        return str(self.__dict__)
-    
-    def dump_json(self):
-        return(json.dump(self.__dict__))
-
     # セルの形式
-    FORMAT_TEXT = 'text'   # テキスト形式のセル
-    FORMAT_MARK = 'mark'   # マル印形式のセル
-    FORMAT_TABLE = 'table'  # 子供のセルを囲んでいるセル
+    FORMAT_TEXT: ClassVar[str] = 'text'   # テキスト形式のセル
+    FORMAT_MARK: ClassVar[str] = 'mark'   # マル印形式のセル
+    FORMAT_TABLE: ClassVar[str] = 'table'  # 子供のセルを囲んでいるセル
 
-    NEAR_VALUE = 10   # 1%の違い以内なら、同じ位置や長さとみなす
+    cell_index: int
+    cell_rect: tuple[int, int, int, int]
+    format: str = FORMAT_TEXT
+    col_cluster_id: int = 0
+    row_cluster_id: int = 0
+
+    NEAR_VALUE: ClassVar[int] = 10   # 1%の違い以内なら、同じ位置や長さとみなす
     def __eq__(self, other):
         return math.isclose(self.rect[0], other.rect[0], abs_tol=CellInfo.NEAR_VALUE) and math.isclose(self.rect[2], other.rect[2], abs_tol=CellInfo.NEAR_VALUE)
 
@@ -46,30 +40,53 @@ class CellInfo:
         if (math.isclose(self.rect[0], other.rect[0], abs_tol=CellInfo.NEAR_VALUE) and (self.rect[2] - other.rect[2] < -CellInfo.NEAR_VALUE)): return True
         return False
 
+@dataclass_json
+@dataclass
 class ClusterInfo:
     # クラスターの方向
-    DIRECT_COL = 'direct_col'  
-    DIRECT_ROW = 'direct_row'
+    DIRECT_COL: ClassVar[str] = 'direct_col'  
+    DIRECT_ROW: ClassVar[str] = 'direct_row'
+    NEAR_VALUE: ClassVar[int] = 10 # 1%の違い以内なら、同じ位置や長さとみなす
 
-    def __init__(self, direction, pos=0, len=0):
-        self.direction = direction  # クラスターの方向(COLかROW)
-        self.cells = []             # クラスターに属するセルのリスト
-        self.pos = pos
-        self.len = len
+    direction: str
+    pos: int
+    len: int
+    cells: list[int] = field(default_factory=list)
+    index: int = 0
 
-    def get_rect(self):
-        top_cell = min(self.cells)
+    def is_same_cluster(self, rect):
+        
+        is_same = False
+        if (self.direction == ClusterInfo.DIRECT_COL):
+            is_same = ((math.isclose(self.pos, rect[0], abs_tol=ClusterInfo.NEAR_VALUE)) and (math.isclose(self.len, rect[2], abs_tol=ClusterInfo.NEAR_VALUE)))
+        else:
+            is_same = ((math.isclose(self.pos, rect[1], abs_tol=ClusterInfo.NEAR_VALUE)) and (math.isclose(self.len, rect[3], abs_tol=ClusterInfo.NEAR_VALUE)))
+        return is_same
 
+@dataclass_json
+@dataclass
 class FrameInfo:
     # フレームの情報。フレームとは、複数のセルと縦と横のクラスター情報から構成される。
-    def __init__(self, rect):
-        self.rect = rect
-        self.cells = []
-        self.col_cluster_list = []
-        self.row_cluster_list = []
+    rect: tuple[int, int, int, int]
+    cells: list[CellInfo] = field(default_factory=list)
+    col_cluster_list: list[ClusterInfo] = field(default_factory=list)
+    row_cluster_list: list[ClusterInfo] = field(default_factory=list)
 
-    def __str__(self):
-        return str(self.__dict__)        
+#    @config
+#    def _dcj_config(self):
+#        # 配列内のオブジェクトを再帰的にシリアライズ
+#        return {"array_as_ref": True}
+
+def to_dict(obj):
+    if isinstance(obj, dict):
+        return obj
+    elif isinstance(obj, list):
+        return [to_dict(x) for x in obj]
+    elif isinstance(obj, tuple):
+        return tuple(to_dict(x) for x in obj)
+    else:
+        return asdict(obj)
+        
 
 class MyEncoder(json.JSONEncoder):
   def default(self, obj):
@@ -331,7 +348,7 @@ def trim_inner_mark2(img):
     return(new_img)
 
 
-def getDescAreaInfo2(img, inv=False):
+def getDescAreaInfo2(img, inv=False) -> FrameInfo:
     """
     記録用のテンプレート画像から、区画情報のスキーマーを計算する
     @param img: レポートの画像イメージ(白地)
@@ -348,11 +365,42 @@ def getDescAreaInfo2(img, inv=False):
 
     col_cluster_list = []
     for cell in cell_list:
-        i = col_cluster_list.index(cell.rect)
-        if (i)
-
+        found = False
+        for col_cluster in col_cluster_list:
+            if col_cluster.is_same_cluster(cell.cell_rect):
+                col_cluster.cells.append(cell.cell_index)
+                found = True
+                break
+        if (not found):
+            new_cluster = ClusterInfo(ClusterInfo.DIRECT_COL, cell.cell_rect[0], cell.cell_rect[2])
+            new_cluster.index = len(col_cluster_list)+1
+            new_cluster.cells.append(cell.cell_index)
+            col_cluster_list.append(new_cluster)
+    
+    row_cluster_list: List[ClusterInfo] = []
+    for cell in cell_list:
+        found = False
+        for row_cluster in row_cluster_list:
+            if row_cluster.is_same_cluster(cell.cell_rect):
+                row_cluster.cells.append(cell.cell_index)
+                found = True
+                break
+        if (not found):
+            new_cluster = ClusterInfo(ClusterInfo.DIRECT_ROW, cell.cell_rect[1], cell.cell_rect[3])
+            new_cluster.index = len(row_cluster_list)+1
+            new_cluster.cells.append(cell.cell_index)
+            row_cluster_list.append(new_cluster)
+  
+    
     util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
-    return frameInfo
+    frame = FrameInfo(rect = (0, 0, img.shape[1], img.shape[0]))
+    frame.cells = cell_list
+    frame.col_cluster_list = col_cluster_list
+    frame.row_cluster_list = row_cluster_list
+
+    print(f"frame: {frame}")
+
+    return frame
 
 from typing import List
 def getFrameInfo(img_gray2, img_debug) -> List[CellInfo]:
@@ -368,7 +416,7 @@ def getFrameInfo(img_gray2, img_debug) -> List[CellInfo]:
     
     # 第一階層の輪郭を追って情報を得る
     trim_offset = 10
-    info = []
+    info: list[CellInfo] = []
     cont_index = 0
     while (cont_index != -1):
         trim_offset = 10
@@ -388,14 +436,12 @@ def getFrameInfo(img_gray2, img_debug) -> List[CellInfo]:
         # 大きな領域だけを処理する
         if ((w_rel > 10) and (h_rel > 10)):
             # 領域情報を作成する
-            cell_info = CellInfo(cont_index, (x_rel, y_rel, w_rel, h_rel), CellInfo.FORMAT_TEXT, 0, 0)
+            cell_info = CellInfo(cont_index, (x_rel, y_rel, w_rel, h_rel))
+            print(f"cell_info:{cell_info}")
+            #j = cell_info.to_json()
+            #print(f"json:{j}")
             info.append(cell_info)
 
-            #test
-            print(f"cell_info:{cell_info}")
-            #json_data = json.dumps(cell_info.__dict__)
-            #print(f"json_cell_info: {json_data}")
-            
             cv2.rectangle(img_debug, (x, y), (x+w, y+h), (0, 255, 0), trim_offset)
             cv2.putText(img_debug, f"info: {cell_info}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         else:
@@ -403,7 +449,9 @@ def getFrameInfo(img_gray2, img_debug) -> List[CellInfo]:
 
         cont_index = hierarchy[0][cont_index][0]   # 次の領域
 
-    print(f"info:{[i.__dict__ for i in info]}")
+    # print(f"info:{info}")
+    # j = CellInfo.schema().dumps(info, many=True)
+    # print(f"json_info:{j}")
     return (info)
     
     
@@ -626,17 +674,16 @@ if __name__ == '__main__':
                     trim_img = trim_paper_frame(img)
                     trim_img2 = trim_inner_mark2(trim_img)
                     info = getDescAreaInfo2(trim_img2)
-                    dict_info = [instance.__dict__ for instance in info]
+                    dict_info = asdict(info)
                     print(f"schema info: {dict_info}")
 
-                    json_list = json.dumps([i.__dict__ for i in info])
-                    print(f"json_list:{json_list}")
-                    json_data = json.dumps(dict_info, cls=MyEncoder)
+                    json_data =  FrameInfo.schema().dumps(info, indent=4)
+                    #json_data = json.dumps(dict_info)
                     print(f"json_data = {json_data}")
 
                     # JSONデータをファイルに書き込み
                     with open("./tmp/area_info.json", "w") as f:
-                        json.dump(dict_info, f)
+                        json.dump(json_data, f, indent=4)
                     main, head, place = getDescArea(trim_img2)
 
 
