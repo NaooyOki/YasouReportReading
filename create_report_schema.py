@@ -34,5 +34,5 @@ if __name__ == '__main__':
                     info = trim.getDescAreaInfo(trim_img2)
                     print(f"schema info: {info}")
                     # JSONデータをファイルに書き込み
-                    with open(file.replace(".jpg", "_schema.json"), "w") as f:
+                    with open(file.lower.replace(".jpg", "_schema.json"), "w") as f:
                         json.dump(info, f)
