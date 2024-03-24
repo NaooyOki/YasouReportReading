@@ -64,62 +64,36 @@ def ReadPlantsFromFile(img_file:str, rows:int):
     """
     # Loads the image into memory
     # 画像ファイルを読み込み、バイト列に変換
+    cache_file = img_file + ".picke"
     img = cv2.imread(img_file)
-    namelist = ReadPlantsFromImage(img, rows)
+    namelist = ReadPlantsFromImage(img, rows, cache_file)
     return(namelist)
 
-def ReadPlantsFromImage(img:cv2.Mat, rows:int): 
+def ReadPlantsFromImage(img:cv2.Mat, rows:int, cache_file:str): 
     """
     植物名が書かれた表の画像ファイルを文字認識して、種名リストを返す
     @param img_file:str 画像ファイル名
     @param rows:int     行数
     @return list[rows]   種名リスト
     """
-    # Loads the image into memory
-    # 画像イメージをバイト列に変換
+    # テキスト読み込み用オブジェクトを用意して、画像を読み込ませる
+    img_reader = VisonImgTextReader()
+    
+    if (os.path.exists(cache_file)):
+        img_reader.load_file(cache_file)
+    else:
+        img_reader.read_image(img)
+        img_reader.save_file(cache_file)
+    
     height = img.shape[0]
     width = img.shape[1]
-    img_bytes = cv2.imencode('.jpg', img)[1].tobytes()
-
-    # 身元証明書のjson読み込み
-    # 各自でGoogle Visionに登録して、サービスアカウントを作成し、鍵ファイルを環境変数でセットアップすること
-    client = vision.ImageAnnotatorClient()
-    image = vision.Image(content=img_bytes)
-
-    # Performs label detection on the image file
-    response =  client.document_text_detection(
-            image=image,
-            image_context={'language_hints': ['ja']}
-        )
+    cell_pitch = height / rows
 
     # レスポンスからテキストデータを抽出
- 
-    plants = []
-    plantsinfo = [[] for i in range(rows)]
-    for page in response.full_text_annotation.pages:
-        for block in page.blocks:
-            for paragraph in block.paragraphs:
-                prev_wordbox = None
-                for word in paragraph.words:
-                    name = ""
-                    for symbol in word.symbols:
-                        if (isKatakana(symbol.text) & (symbol.confidence >= 0.25)):
-                            name += symbol.text
-                        else:
-                            strPos = strSymbolBound(symbol)
-                            print(f"warning: 読み込んだ文字({symbol.text}, {strPos}) は、信頼性({symbol.confidence})が低いか、カタカナでないため、取り込みませんでした。 ")
-                            name += "?"
-                    plant = PlantNameInfo(name, (word.bounding_box.vertices[0].x + word.bounding_box.vertices[2].x)/2, (word.bounding_box.vertices[0].y + word.bounding_box.vertices[2].y)/2)
-                    row = int(plant.y / (height / rows))
-                    # print(f"name:{name}, conf:{word.confidence}, row:{row}, x:{plant.x}")
-                    plantsinfo[row].append(plant)
-
     namelist = []
-    for (row, plant) in enumerate(plantsinfo):
-        plant = sorted(plant, key=lambda p: p.x)
-        name = ""
-        for p in plant:
-            name += p.name
+    for row in range(rows):
+        name = img_reader.extract_text_from_region(0, row*cell_pitch, width, cell_pitch)
+        print(f"plant[{row+1}] = {name}")
         namelist.append(name)
 
     return(namelist)
