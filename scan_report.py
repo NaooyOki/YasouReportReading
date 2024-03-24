@@ -335,7 +335,8 @@ if __name__ == '__main__':
 
                     # 種名の画像ファイルから種名リストを得る
                     if (not g_skipText):
-                        plantnames = text_scan.ReadPlantsFromImage(plant_img, len(stats))
+                        cache_file = file + ".picke"
+                        plantnames = text_scan.ReadPlantsFromImage(plant_img, len(stats), cache_file)
                     else:
                         plantnames = ["skiped plant names"] * len(stats)
                         print(f"Option: 種名の画像認識をスキップします")
