@@ -8,6 +8,19 @@ from pathlib import Path
 from google.cloud import vision
 from google.oauth2 import service_account
 import utility as util
+import json
+import pickle
+from dataclasses import dataclass, field, asdict
+from typing import ClassVar
+
+@dataclass
+class ScanedTextInfo:
+    x: int
+    y: int
+    width: int
+    height: int
+    text: str
+    
 
 class PlantNameInfo:
     def __init__(self, name, pos_x, pos_y) -> None:
@@ -111,26 +124,113 @@ def ReadPlantsFromImage(img:cv2.Mat, rows:int):
 
     return(namelist)
 
+class VisonImgTextReader:
+    def __init__(self) -> None:
+        self.response = None
 
+    def read_image(self, image):
+        encoded_image = cv2.imencode('.jpg', image)[1].tobytes()
+
+        client = vision.ImageAnnotatorClient()
+        vision_image = vision.Image(content=encoded_image)
+
+        # Performs label detection on the image file
+        self.response =  client.document_text_detection(
+                image=vision_image,
+                image_context={'language_hints': ['ja']}
+            )
+        
+    def read_file(self, file_path):
+        cv2_image = cv2.imread(file_path)
+        if cv2_image is not None:
+            self.read_image(cv2_image)
+
+
+    def save_file(self, file_path):
+        print(f"reponse type = {type(self.response)}")
+        #json_str = self.response.to_json()
+        #data = json.loads(json_str)
+        #data = dict(self.response)
+
+        with open(file_path, "wb") as f:           
+            pickle.dump(self.response, f)
+    
+    def load_file(self, file_path):
+        with open(file_path, "rb") as f:
+            self.response = pickle.load(f)
+        print(f"reponse type = {type(self.response)}")
+
+        #self.response = vision.types.Document()
+        #self.response.ParseDict(data)
+
+    def extract_text_from_region(self, x, y, width, height):
+        """
+        指定された矩形領域内のテキストを抽出します。
+        Args:
+            x: 左上の X 座標
+            y: 左上の Y 座標
+            width: 幅
+            height: 高さ
+        Returns:
+            抽出されたテキスト
+        """
+
+        text_info_list = []
+        for page in self.response.full_text_annotation.pages:
+            for block in page.blocks:
+                for paragraph in block.paragraphs:
+                    for word in paragraph.words:
+                        # 座標内に含まれる単語のみ抽出
+                        if self.is_in_region(word.bounding_box, x, y, width, height):
+                            text = ""
+                            for symbol in word.symbols:
+                                if (symbol.confidence >= 0.25):
+                                    text += symbol.text
+                                else:
+                                    text += '?'
+                            text_info = ScanedTextInfo(word.bounding_box.vertices[0].x, 
+                                                       word.bounding_box.vertices[0].y, 
+                                                       word.bounding_box.vertices[2].x - word.bounding_box.vertices[0].x, 
+                                                       word.bounding_box.vertices[2].y - word.bounding_box.vertices[0].y,
+                                                       text
+                                                       )
+                            text_info_list.append(text_info)
+        
+        text_info_list = sorted(text_info_list, key=lambda info: info.x)
+        text = ""
+        for info in text_info_list:
+            text += info.text
+
+        return text
+
+    def is_in_region(self, bounding_box, x, y, width, height):
+        """
+        指定された座標内に矩形が含まれているかを判断します。
+        Args:
+            bounding_box: 検出したテキスト領域を表す `vision.types.BoundingBox` オブジェクト
+            x, y, width, height: 対象の矩形領域
+        """
+
+        return(
+            (x <= (bounding_box.vertices[0].x + bounding_box.vertices[2].x)/2 <= x+width)
+            and (y <= (bounding_box.vertices[0].y + bounding_box.vertices[2].y)/2 <= y+height)
+            )
 
 # main
 if __name__ == '__main__':
-    args = sys.argv
-    if 2 > len(args):
-        print(f"Usage {args[0]} image_file")
-    else:
-        util.debugTmpImgRemove()
-        for i in range(1, len(args)):
-            file = args[i]
-            namelist = ReadPlantsFromImage(file, 30)
-            print("#result")
-            f = open(file.replace(".jpg", ".txt"), 'w')
-            f.write(f"{file}\n")
+    img_file = "./record/202403/202403B01.JPG"
+    json_file = "./record/202403/202403B01.pickle"
 
-            for i, name in enumerate(namelist):
-                # print(f"{i+1}:{name}")
-                f.write(f"{i+1},{name}\n")  
-            f.close()
+    img_reader = VisonImgTextReader()
+    if (os.path.exists(json_file)):
+        img_reader.load_file(json_file)
+    else:
+        img_reader.read_file(img_file)
+        img_reader.save_file(json_file)
+
+    text = img_reader.extract_text_from_region(100, 1300, 500, 100)
+    print(f"text={text}")
+
 
 
 
