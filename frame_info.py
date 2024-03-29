@@ -13,7 +13,9 @@ from typing import ClassVar
 from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
 from typing import MutableMapping
+from typing import List
 import re
+import bisect
 
 #@dataclass_json
 #@dataclass
@@ -40,9 +42,9 @@ class Frame:
         self.name = name
         self.rect = rect
         self.parent = parent
-        self.children = []
+        self.children = dict()
         if (parent is not None):
-            parent.children.append(self)
+            parent.children[self.name] = self
         self.format = Frame.FORMAT_FRAME
         self.value = None
         self.schema = None
@@ -67,7 +69,7 @@ class Frame:
             "schema": self.schema,
                 }
         if (len(self.children) > 0):
-            dic["children"] = list(map(lambda c: c.to_dict(), self.children))
+            dic["children"] = list(map(lambda c: c.to_dict(), self.children.values()))
             dic["cluster_list_col"] = list(map(lambda c: c.to_dict(), self.cluster_list_col))
             dic["cluster_list_row"] = list(map(lambda c: c.to_dict(), self.cluster_list_row))
 
@@ -85,39 +87,58 @@ class Frame:
     
     def scan_text(self) -> str:
         return "test"
-    
-    def create_claster_list(self):
+
+
+    def create_claster_list_sub(self, direction):
         # 子輪郭からクラスター情報を作る
         if (len(self.children) > 0):
-            cluster_list_row = []
-            for child in self.children:
+            if (direction == Cluster.DIRECT_ROW):
+                cluster_name = "row_"
+                pos_index = 1
+                len_index = 3
+                subpos_index = 0
+            else:
+                cluster_name = "col_"
+                pos_index = 0
+                len_index = 2
+                subpos_index = 1
+
+            cluster_list = []
+            for child in self.children.values():
                 found = False
-                for cluster in cluster_list_row:
+                for cluster in cluster_list:
                     if (cluster.is_same_cluster(child.rect)):
-                        cluster.frames.append(child.name)
+                        # 同じ行/列クラスターに所属する子フレームが見つかったので、列/行の位置の順にソートしてリストに加える
+                        bisect.insort(cluster.frames, child.name, key=lambda name: self.children[name].rect[subpos_index])
                         found = True
                         break
                 if (not found):
-                    new_cluster = Cluster(f"row_{len(cluster_list_row)+1}", Cluster.DIRECT_ROW, child.rect[1], child.rect[3])
+                    # どの行クラスーにも所属しない子フレームのため、新しい行クラスターを作って、列の位置の順にソートして追加する
+                    new_cluster = Cluster(f"{cluster_name}{len(cluster_list)+1}", Cluster.DIRECT_ROW, child.rect[pos_index], child.rect[len_index])
                     new_cluster.frames.append(child.name)
-                    cluster_list_row.append(new_cluster)
-            self.cluster_list_row = cluster_list_row
+                    bisect.insort(cluster_list, new_cluster, key=lambda c: c.pos)
+            
+            return cluster_list
 
-            cluster_list_col = []
-            for child in self.children:
-                found = False
-                for cluster in cluster_list_col:
-                    if (cluster.is_same_cluster(child.rect)):
-                        cluster.frames.append(child.name)
-                        found = True
-                        break
-                if (not found):
-                    new_cluster = Cluster(f"col_{len(cluster_list_col)+1}", Cluster.DIRECT_COL, child.rect[0], child.rect[2])
-                    new_cluster.frames.append(child.name)
-                    cluster_list_col.append(new_cluster)
-            self.cluster_list_col = cluster_list_col
 
+    def create_claster_list(self):
+        self.cluster_list_row = self.create_claster_list_sub(Cluster.DIRECT_ROW)
+        self.cluster_list_col = self.create_claster_list_sub(Cluster.DIRECT_COL)
+        return
+
+    def get_frame_in_cluster(self, col_index, row_index):
+        try:
+            cluster = self.cluster_list_row[col_index]
+            frame_name = cluster.frames[row_index]
+            frame = self.children[frame_name]
+        except IndexError:
+            print(f"範囲外のインデクスにアクセスしました col={col_index}, row={row_index}")
+            return None
+        return frame
 class Cluster:
+    """
+    子フレームの集合を列または行のあつまりで扱うためのクラス
+    """
     # クラスターの方向
     DIRECT_COL = 'col'  
     DIRECT_ROW = 'row'
@@ -275,45 +296,81 @@ def get_frames_sub(image, contours, hierarchy, target_cont_index, level, parent,
     return frame
 
 
-# main
 import trim_report_frame
+import text_scan
+def scan_frame(frame:Frame, scanner:text_scan.VisonImgTextReader):
+    if (len(frame.children) > 0):
+        for child in frame.children.values():
+            scan_frame(child, scanner)
+    else:
+        rect = frame.abs_rect()
+        text = scanner.extract_text_from_region(rect[0], rect[1], rect[2], rect[3])
+        frame.value = text
+        print(f"scanned text:{text} from {frame.name}:{rect}")
+
+# main
+
 if __name__ == '__main__':
-    #test_file = "./record/202403/202403B01.JPG"
-    test_file = "./template/PlantsInspectReport_v1.1.jpg"
+    test_file = "./record/202403/202403B02.JPG"
+    #test_file = "./template/PlantsInspectReport_v1.1.jpg"
+    cache_file = "./cache/" + os.path.basename(test_file) + ".pickle"
     img = cv2.imread(test_file)
     trim_img = trim_report_frame.trim_paper_frame(img)
     trim_img2 = trim_report_frame.trim_inner_mark2(trim_img)
-    
 
+    # OCR機能を使ってテキスト情報を読み取る
+    img_reader = text_scan.VisonImgTextReader()
+    if (os.path.exists(cache_file)):
+        print("read cache")
+        img_reader.load_file(cache_file)
+    else:
+        print("scan and create cache")
+        img_reader.read_image(trim_img2)
+        img_reader.save_file(cache_file)
+    
+    # 画像を読み取り、フレーム情報を読み取る
     debug_img = trim_img2.copy()
     root = get_frames(trim_img2)
-    d = root.to_dict()
-    print(f"root_to_dict={d}")
+
+    # 取得したフレーム内の文字を読み込む
+    scan_frame(root, img_reader)
+
+    # ヘッダを取り出す
+    head = root.get_frame_in_cluster(0, 0)
+    head_date = head.get_frame_in_cluster(0, 0)
+    print(f"head_date: {head_date.value}")
+    head_member = head.get_frame_in_cluster(1, 0)
+    print(f"head_member: {head_member.value}")
+    head_wed = head.get_frame_in_cluster(0, 1)
+    print(f"head_wed: {head_wed.value}")
+    
+    # コースを取り出す
+    course = root.get_frame_in_cluster(1, 0)
+    course_route = course.get_frame_in_cluster(0, 0)
+    print(f"course_route: {course_route.value}")
+    course_page = course.get_frame_in_cluster(0, 1)
+    print(f"course_page: {course_page.value}")
+
+    # メイン部分を取り出す
+    main = root.get_frame_in_cluster(2, 0)
+    for row_index in range(len(main.cluster_list_row)):
+        main_no = main.get_frame_in_cluster(row_index, 0)
+        main_plant = main.get_frame_in_cluster(row_index, 1)
+        main_kind = main.get_frame_in_cluster(row_index, 2)
+        main_sample = main.get_frame_in_cluster(row_index, 3)
+        main_note = main.get_frame_in_cluster(row_index, 4)
+        try:
+            print(f"No:{main_no.value}, plant:{main_plant.value}, kind:{main_kind.value}, sample:{main_sample.value}, note:{main_note.value}")
+        except:
+            print(f"skip index={row_index}")
+
 
     # JSONデータをファイルに書き込み
+    d = root.to_dict()
+    # print(f"root_to_dict={d}")
     with open("./tmp/frame_info.json", "w") as f:
         json.dump(d, f, indent=4)
+
     exit()
 
-
-
-
-    root = Frame("root", [0, 0, 1000, 2000], None)
-    head = Frame("head", [100, 100, 400, 100], root)
-    head_date = Cell("date", [0, 0, 300, 50], head, Cell.FORMAT_TEXT, "", Cell.SCHEMA_DATE_TEXT)
-    head_wed = Cell("weadher", [300, 0, 100, 50], head, Cell.FORMAT_TEXT, "", Cell.SCHEMA_ALL_TEXT)
-    head_mem = Cell("member", [0, 50, 400, 50], head, Cell.FORMAT_TEXT, "", Cell.SCHEMA_ALL_TEXT)
-    page = Frame("page", [700, 100, 200, 100], root)
-    main = Frame("main", [100, 250, 800, 1550], root)
-
-    head_date.scan_value('日付： 2024年3月27日')
-    head_wed.scan_value('天気: 晴れ')
-    head_mem.scan_value('青木、石田、上本、遠藤、大分')
-
-
-    head_wed_rect = head_wed.abs_rect()
-    print(f"head_rect={head_wed_rect}")
-    d = root.to_dict()
-    print(f"root_to_dict={d}")
-    exit()
 
