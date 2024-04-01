@@ -72,10 +72,12 @@ class FrameInfo:
     col_cluster_list: list[ClusterInfo] = field(default_factory=list)
     row_cluster_list: list[ClusterInfo] = field(default_factory=list)
 
-#    @config
-#    def _dcj_config(self):
-#        # 配列内のオブジェクトを再帰的にシリアライズ
-#        return {"array_as_ref": True}
+
+
+            
+
+
+
 
 def to_dict(obj):
     if isinstance(obj, dict):
@@ -585,8 +587,11 @@ def getDescArea(img, inv=False):
 
     # 一番外側の枠を分類する
     main = None
+    main_pos = (0, 0)
     head = None
+    head_pos = (0, 0)
     place = None
+    place_pos = (0, 0)
     unknown_area = []
     trim_offset = 10
     for i, contour in enumerate(contours):
@@ -604,17 +609,20 @@ def getDescArea(img, inv=False):
         if ((w > img_w * 0.5) and (h > img_h * 0.6)):
             # メイン記述領域
             main = detect_img
+            main_pos = (x, y)
             cv2.rectangle(img_debug, (x, y), (x+w, y+h), (0, 255, 0), trim_offset)
             cv2.putText(img_debug, f"main: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         elif((x < img_w * 0.2) and (y < img_h * 0.1) and (w > img_w * 0.3) and (h < img_h * 0.1)):
             # ヘッダ記述領域
             # head = img[pt1[1]:pt2[1], pt1[0]:pt2[0]]
             head = detect_img
+            head_pos = (x, y)
             cv2.rectangle(img_debug,  (x, y), (x+w, y+h), (0, 0, 255), trim_offset)
             cv2.putText(img_debug, f"head: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         elif((x > img_w * 0.6) and (y < img_h * 0.1) and (w > img_w * 0.1) and (h < img_h * 0.1)):
             # 場所記述領域
             place = detect_img
+            place_pos = (x, y)
             cv2.rectangle(img_debug,  (x, y), (x+w, y+h), (0, 255, 255), trim_offset)
             cv2.putText(img_debug, f"place: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         else:
@@ -625,36 +633,13 @@ def getDescArea(img, inv=False):
             cv2.putText(img_debug, f"unknown: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
     
         util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
-    return (main, head, place)
+    return (main, main_pos, head, head_pos, place, place_pos)
 
 
 
 # main
 g_skipText=False
 if __name__ == '__main__':
-    
-    info_list = []
-    info1 = CellInfo(0, (100, 100, 200, 200))
-    info_list.append(info1)
-    info2 = CellInfo(1, 200)
-    info_list.append(info2)
-    info3 = CellInfo(2, 300)
-    info_list.append(info3)
-    print(f"info1:{info1}")
-    print(f"info2:{info2}")
-    print(f"info3:{info3}")
-    print(f"info_list:{info_list}")
-
-    json1 = json.dumps(info1.__dict__)
-    print(f"json1:{json1}")
-    json2 = json.dumps(info2.__dict__)
-    print(f"json1:{json2}")
-    json3 = json.dumps(info3.__dict__)
-    print(f"json1:{json3}")
-
-    json_list = json.dumps([info.__dict__ for info in info_list])
-    print(f"json_list:{json_list}")
-
     args = sys.argv
     if 2 > len(args):
         print(f"Usage {args[0]} [--skipText] image_file")
@@ -684,6 +669,6 @@ if __name__ == '__main__':
                     # JSONデータをファイルに書き込み
                     with open("./tmp/area_info.json", "w") as f:
                         json.dump(json_data, f, indent=4)
-                    main, head, place = getDescArea(trim_img2)
+                    main, main_pos, head, head_pos, place, place_pos  = getDescArea(trim_img2)
 
 

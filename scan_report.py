@@ -199,8 +199,8 @@ class TableImageParser:
                 cv2.line(self.img_debug, (x1,y1), (x2,y2), (0,0,255), 3)
 
         # 列と行を求める
-        self.cols = util.trimPosList(sorted(cols), skip=2)
-        self.rows = util.trimPosList(sorted(rows), skip=2)
+        self.cols = trimPosList(sorted(cols), skip=2)
+        self.rows = trimPosList(sorted(rows), skip=2)
         util.debugImgWrite(self.img_debug, "step4", "table")
 
         return(self.cols, self.rows)
@@ -219,6 +219,24 @@ class TableImageParser:
         img = self.src_img if raw else self.img_gray2
         cell_img = img[self.rows[1][1]:self.rows[-1][0], self.cols[col][1]:self.cols[col+1][0]]
         return(cell_img)
+    
+def trimPosList(lst:List[int], skip:int = 2) -> List[int]:
+    """
+    隣接する直線を一つに束ねる。表の罫線は太いため、直線検出では複数の直線として得られるため。
+    @param list:List[int]  線の位置
+    @return list:list(start:int, end:int)  束ねた線の位置(始点と終点のタプル) 
+    """
+    trimed = []
+    prev = lst[0]
+    start = prev
+    for pos in lst:
+        if ((pos - prev) > skip):
+            trimed.append((start, prev))
+            start = pos
+        prev = pos
+    trimed.append((start, prev))
+
+    return(trimed)
     
 class YasouRecordTable:
     indexNo = 0
@@ -239,7 +257,7 @@ class YasouRecordTable:
         assert len(self.table_parser.cols)-1 == YasouRecordTable.expectedCols, f"表のカラム数{len(self.table_parser.cols)-1}が期待した値{YasouRecordTable.expectedCols}と違います"
 
 
-def parseMainImg(img):
+def parseMainImg(img, img_pos):
     # 野草の表イメージを読み込む
     table = YasouRecordTable()
     table.parseImg(img)
@@ -318,13 +336,13 @@ if __name__ == '__main__':
                     trim_img2 = trim_inner_mark2(trim_img)
 
                     # 各記録の部分を切り出す
-                    main_img, head_img, place_img = getDescArea(trim_img2)
+                    main_img, main_pos, head_img, head_pos, place_img, place_pos = getDescArea(trim_img2)
                     debugImgWrite(main_img, "step0", "main")
                     debugImgWrite(head_img, "step0", "head")
                     debugImgWrite(place_img, "step0", "place")
 
                     # メイン部の内容を読み取る
-                    ((plant_img, stat_img, sample_img, note_img), (plants, stats, samples, notes)) = parseMainImg(main_img)
+                    ((plant_img, stat_img, sample_img, note_img), (plants, stats, samples, notes)) = parseMainImg(main_img, main_pos)
                     debugImgWrite(plant_img, "step1", "plant")
                     debugImgWrite(stat_img, "step1", "stat")
                     debugImgWrite(sample_img, "step1", "sample")
