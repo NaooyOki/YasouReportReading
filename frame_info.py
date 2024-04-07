@@ -13,12 +13,12 @@ from typing import ClassVar
 from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
 from typing import MutableMapping
-from typing import List
+from typing import List, Dict, Optional
 import re
 import bisect
 
-#@dataclass_json
-#@dataclass
+@dataclass_json
+@dataclass
 class Frame:
     """
     フレームの情報。フレームとは、複数のセルと縦と横のクラスター情報から構成される。
@@ -32,12 +32,36 @@ class Frame:
     #col_cluster_list: list[ClusterInfo] = field(default_factory=list)
     #row_cluster_list: list[ClusterInfo] = field(default_factory=list)
 
-    FORMAT_FRAME = "frame"
-    FORMAT_TEXT = "text"
-    FORMAT_MARK = "mark"
-    SCHEMA_ALL_TEXT = r'(.*)'
-    SCHEMA_DATE_TEXT = r'(\d*)年(\d*)月(\d*)日'
+    FORMAT_FRAME: ClassVar[str] = "frame"
+    FORMAT_TEXT: ClassVar[str] = "text"
+    FORMAT_MARK: ClassVar[str] = "mark"
+    SCHEMA_ALL_TEXT: ClassVar[str] = r'(.*)'
+    SCHEMA_DATE_TEXT: ClassVar[str] = r'(\d*)年(\d*)月(\d*)日'
 
+    name:str
+    rect:list[int]
+    parent: "Frame" = field(default=None, repr=False, metadata=config(exclude=True))
+    # parent: "Frame" = config(exclude=True, metadata=field(default=None, repr=False))
+    children: Dict[str, List["Frame"]] = field(default_factory=dict, init=False)
+    format:str = FORMAT_FRAME
+    value:str = ""
+    schema:str = ""
+    cluster_list_row:list['Cluster'] = field(default_factory=list, init=False)
+    cluster_list_col:list['Cluster'] = field(default_factory=list, init=False)
+
+    def __post_init__(self):
+        if (self.parent is not None):
+            self.parent.children[self.name] = self
+
+    def to_json2(self):
+        js = {"name": self.name, "rect": self.rect}
+        if (len(self.children) > 0):
+            js["children"] = list(map(lambda c: c.to_json2(), self.children.values()))
+            js["cluster_list_row"] = list(map(lambda c: c.to_dict(), self.cluster_list_row))
+            js["cluster_list_col"] = list(map(lambda c: c.to_dict(), self.cluster_list_col))
+        return js
+
+    """
     def __init__(self, name:str, rect:List[int], parent:"Frame"=None) -> None:
         self.name = name
         self.rect = rect
@@ -48,13 +72,14 @@ class Frame:
         self.format = Frame.FORMAT_FRAME
         self.value = None
         self.schema = None
-        self.cluster_list_row = []
+        self.cluster_list_row = []  
         self.cluster_list_col = []
-
+    """
+        
     def get_children(self) -> List["Frame"]:
         self.children.values()
 
-    def abs_rect(self) -> list[int]:
+    def abs_rect(self) -> List[int]:
         rect = self.rect.copy()
         parent = self.parent
         while (parent is not None):
@@ -63,7 +88,8 @@ class Frame:
             parent = parent.parent
         return rect 
 
-    def to_dict(self):
+    """
+    def to_dict(self) -> dict:
         dic = {
             "name": self.name,
             "rect": self.rect,
@@ -77,7 +103,8 @@ class Frame:
             dic["cluster_list_row"] = list(map(lambda c: c.to_dict(), self.cluster_list_row))
 
         return dic
-
+    """
+        
     def scan_value(self, scan):
         ptn = re.compile(self.schema)
         text = scan
@@ -87,11 +114,6 @@ class Frame:
             self.value = ""
         return self.value
     
-    
-    def scan_text(self) -> str:
-        return "test"
-
-
     def create_claster_list_sub(self, direction):
         # 子輪郭からクラスター情報を作る
         if (len(self.children) > 0):
@@ -106,7 +128,7 @@ class Frame:
                 len_index = 2
                 subpos_index = 1
 
-            cluster_list = []
+            cluster_list:List[Cluster] = []
             for child in self.children.values():
                 found = False
                 for cluster in cluster_list:
@@ -117,7 +139,7 @@ class Frame:
                         break
                 if (not found):
                     # どの行クラスーにも所属しない子フレームのため、新しい行クラスターを作って、列の位置の順にソートして追加する
-                    new_cluster = Cluster(f"{cluster_name}{len(cluster_list)+1}", Cluster.DIRECT_ROW, child.rect[pos_index], child.rect[len_index])
+                    new_cluster = Cluster(f"{cluster_name}{len(cluster_list)+1}", direction, child.rect[pos_index], child.rect[len_index])
                     new_cluster.frames.append(child.name)
                     bisect.insort(cluster_list, new_cluster, key=lambda c: c.pos)
             
@@ -138,21 +160,32 @@ class Frame:
             print(f"範囲外のインデクスにアクセスしました col={col_index}, row={row_index}")
             return None
         return frame
+
+@dataclass_json
+@dataclass
 class Cluster:
     """
     子フレームの集合を列または行のあつまりで扱うためのクラス
     """
     # クラスターの方向
-    DIRECT_COL = 'col'  
-    DIRECT_ROW = 'row'
-    NEAR_VALUE = 5 # 1%の違い以内なら、同じ位置や長さとみなす
+    DIRECT_COL: ClassVar[str] = 'col'  
+    DIRECT_ROW: ClassVar[str] = 'row'
+    NEAR_VALUE: ClassVar[int] = 5 # 1%の違い以内なら、同じ位置や長さとみなす
 
+    name:str
+    direct:str
+    pos:int
+    len:int
+    frames:List[str] = field(default_factory=list, init=False)
+
+    """
     def __init__(self, name, direct, pos, len) -> None:
         self.name = name
         self.direct = direct
         self.pos = pos
         self.len = len
         self.frames = []
+    """
 
     def is_same_cluster(self, rect):
         is_same = False
@@ -162,9 +195,10 @@ class Cluster:
             is_same = ((math.isclose(self.pos, rect[1], abs_tol=Cluster.NEAR_VALUE)) and (math.isclose(self.len, rect[3], abs_tol=Cluster.NEAR_VALUE)))
         return is_same
     
+    """
     def to_dict(self):
         return {"direct": self.direct, "pos": self.pos, "len": self.len, "frames": self.frames}
-
+    """
 
 class FrameInfo3:
     # フレームの情報。フレームとは、複数のセルと縦と横のクラスター情報から構成される。
@@ -251,7 +285,7 @@ class FrameDetector:
         if (target_frame == self.root_frame):
             child_index = 0
         else:
-            my_index = self.cont_index_tbl[target_frame]
+            my_index = self.cont_index_tbl[target_frame.name]
             child_index = self.hierarchy[0][my_index][2]   # 最初の子供の輪郭
 
         while (child_index != -1):
@@ -271,9 +305,9 @@ class FrameDetector:
             # ある程度の大きさがある領域だけをフレーム作成の対象にする
             if ((w_rel > 0.02) and (h_rel > 0.02)):
                 # Frameクラスを作る
-                frame = Frame(f"frame_{child_index}", [x - target_frame.rect[0], y - target_frame.rect[1], w, h], target_frame)
-                self.cont_index_tbl[frame] = child_index
-                print(f"create child frame: {frame.__dict__}")
+                frame = Frame(name=f"frame_{child_index}", rect=[x - target_frame.rect[0], y - target_frame.rect[1], w, h], parent=target_frame)
+                self.cont_index_tbl[frame.name] = child_index
+                print(f"create child frame: {frame}")
                 cv2.rectangle(self.img_debug, (x, y), (x+w, y+h), color[level], trim_offset)
                 cv2.putText(self.img_debug, f"frame: {frame.name}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
             else:
@@ -301,7 +335,6 @@ class FrameDetector:
         lines = cv2.HoughLinesP(img, rho=1, theta=np.pi/2, threshold=80, minLineLength=img_w/2, maxLineGap=10)
         cols = []
         rows = []
-        cell_list = []
         for line in lines:
             x1, y1, x2, y2 = line[0]
 
@@ -322,16 +355,15 @@ class FrameDetector:
         row_spans = trimPosList(sorted(rows), skip=4)
         util.debugImgWrite(img_debug, "step4", "table")
 
-        for row in range(len(row_spans)):
+        for row in range(min(40, len(row_spans))):
             (row_start, row_end) = row_spans[row]
-            for col in range(len(col_spans)):
+            for col in range(min(10, len(col_spans))):
                 (col_start, col_end) = col_spans[col]
-                cell = Frame(f"{target_frame.name}_{row}_{col}", [col_start, row_start, col_end-col_start, row_end-row_start], target_frame)
-                cell_list.append(cell)
-
+                cell = Frame(f"{target_frame.name}_{row}{col}", [col_start, row_start, col_end-col_start, row_end-row_start], target_frame)
+                print(f"create child frame: {cell.__dict__}")
         target_frame.create_claster_list()
 
-        return(cell_list)
+        return target_frame.get_children()
 
 
 def trimPosList(pos_list:List[int], skip:int):
@@ -345,159 +377,6 @@ def trimPosList(pos_list:List[int], skip:int):
     
     return span_list
 
-            
-
-
-
-class TableImageParser:
-    def __init__(self) -> None:
-        self.cols = []
-        self.rows = []
-        self.src_img = []
-
-    def parseTableImage(self, img):
-        """
-        表イメージを解析する
-        @param img:画像イメージ(カラー)
-        """
-        self.src_img = img
-        self.img_debug = img.copy()
-        self.img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)   # 画像処理のノイズ除去
-        ret, self.img_gray2 = cv2.threshold(self.img_gray, 130, 255, cv2.THRESH_BINARY_INV)
-        img_w = self.img_gray2.shape[1]
-        img_h = self.img_gray2.shape[0]
-        cv2.imwrite("./tmp/step4_gray.jpg", self.img_gray2)
-
-        # 罫線検出
-        lines = cv2.HoughLinesP(self.img_gray2, rho=1, theta=np.pi/2, threshold=80, minLineLength=img_w/4, maxLineGap=10)
-        cols = []
-        rows = []
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-
-            if ((abs(x1-x2) < 10) and (abs(y1-y2) > 10)):
-                # 縦線
-                cols.append(x1)
-                cv2.line(self.img_debug, (x1,y1), (x2,y2), (255,0,0), 3)
-            elif ((abs(x1-x2) > 10) and (abs(y1-y2) < 10)):
-                # 横線
-                rows.append(y1)
-                cv2.line(self.img_debug, (x1,y1), (x2,y2), (0,255,0), 3)
-            else:
-                print(f"処理できない線がみつかりました ({x1}, {y1}-({x2},{y2}))")
-                cv2.line(self.img_debug, (x1,y1), (x2,y2), (0,0,255), 3)
-
-        # 列と行を求める
-        self.cols = trimPosList(sorted(cols), skip=2)
-        self.rows = trimPosList(sorted(rows), skip=2)
-        util.debugImgWrite(self.img_debug, "step4", "table")
-
-        return(self.cols, self.rows)
-    
-    def getCellImage(self, col:int, row:int, raw=False):
-        img = self.src_img if raw else self.img_gray2
-        cell_img = img[self.rows[row][1]:self.rows[row+1][0], self.cols[col][1]:self.cols[col+1][0]]
-        return(cell_img)
-
-    def getColHeaderImage(self, col:int, raw=False):
-        img = self.src_img if raw else self.img_gray2
-        cell_img = img[self.rows[0][1]:self.rows[1][0], self.cols[col][1]:self.cols[col+1][0]]
-        return(cell_img)
-
-    def getColContens(self, col:int, raw=False):
-        img = self.src_img if raw else self.img_gray2
-        cell_img = img[self.rows[1][1]:self.rows[-1][0], self.cols[col][1]:self.cols[col+1][0]]
-        return(cell_img)
-
-
-
-"""
-def get_frames(img) -> Frame:
-    img_debug = img.copy()
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    ret, img_gray2 = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "1input")
-
-    # 入力された領域をRootフレームとする
-    img_w = img_gray2.shape[1]
-    img_h = img_gray2.shape[0]
-    root_frame = Frame("root", [0, 0, img_w, img_h], None)
-    
-    # 輪郭のツリーを見つける
-    contours, hierarchy = cv2.findContours(
-        img_gray2, 
-        cv2.RETR_TREE, 
-        cv2.CHAIN_APPROX_SIMPLE
-        ) 
-    
-    # 第一階層の輪郭を追って情報を得る
-    cont_index = 0
-    while (cont_index != -1):
-        get_frames_sub(img_gray2, contours, hierarchy, cont_index, 0, root_frame, img_debug)
-        cont_index = hierarchy[0][cont_index][0]   # 次の輪郭
-
-    root_frame.create_claster_list()
-
-
-    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
-    return (root_frame)
-
-def get_frames_sub(image, contours, hierarchy, target_cont_index, level, parent, img_debug):
-    入れ子になった矩形領域をFrameクラスのインスタンスとして階層的に抽出する
-    Args:
-        image: 入力画像
-        contours: 輪郭のリスト
-        hierarchy: 輪郭の階層情報
-        target_cont_index: 対象の輪郭のインデックス
-        level: 階層レベル
-        parent: 親のFrameクラス
-
-    trim_offset = 10
-    color = [(0, 255, 0), (255, 0, 0), (0, 0, 255)]
-    skip_color = (0, 0, 128)
-
-    # 輪郭のインデックスが無効の場合は、Noneを返す
-    if target_cont_index == -1:
-        return None
-
-    # 2階層を超えた場合は、Noneを返す
-    if level >= 2:
-        return None
-    
-    # 自身の領域情報を得る
-    contour = contours[target_cont_index]
-    area = cv2.contourArea(contour)
-    x,y,w,h = cv2.boundingRect(contour)
-    img_w = image.shape[1]
-    img_h = image.shape[0]
-    x_rel = x / img_w
-    y_rel = y / img_h
-    w_rel = w / img_w
-    h_rel = h / img_h
-    
-    # 小さい領域は無視する
-    if ((w_rel < 0.02) or (h_rel < 0.02)):
-        print(f"skipped small area {x},{y},{w},{h}")
-        cv2.rectangle(img_debug, (x, y), (x+w, y+h), skip_color, trim_offset)
-        return None
-    
-    # 自分自身のFrameクラスを作る
-    frame = Frame(f"frame_{target_cont_index}", [x - parent.rect[0], y - parent.rect[1], w, h], parent)
-    cv2.rectangle(img_debug, (x, y), (x+w, y+h), color[level], trim_offset)
-    cv2.putText(img_debug, f"frame: {frame.name}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
-
-    # 子輪郭の情報リストを得る
-    child_cont_index = hierarchy[0][target_cont_index][2]   # 子供の輪郭
-    while (child_cont_index != -1):
-        get_frames_sub(image, contours, hierarchy, child_cont_index, level + 1, frame, img_debug)
-        child_cont_index = hierarchy[0][child_cont_index][0]   # 次の輪郭
-
-    # 子輪郭からクラスター情報を作る
-    frame.create_claster_list()
-
-    return frame
-"""
 
 
 import trim_report_frame
@@ -513,9 +392,8 @@ def scan_frame(frame:Frame, scanner:text_scan.VisonImgTextReader):
         print(f"scanned text:{text} from {frame.name}:{rect}")
 
 # main
-
 if __name__ == '__main__':
-    test_file = "./record/202403/202403B02.JPG"
+    test_file = "./record/202403/202403B01.JPG"
     #test_file = "./template/PlantsInspectReport_v1.1.jpg"
     cache_file = "./cache/" + os.path.basename(test_file) + ".pickle"
     img = cv2.imread(test_file)
@@ -556,7 +434,8 @@ if __name__ == '__main__':
     # メイン部分を取り出す
     main = root.get_frame_in_cluster(2, 0)
     main_child = frame_detector.detect_table_frame(main, 1)
-    print(f"main_child={main_child}")
+    #main_child = frame_detector.detect_sub_frames(main, 1)
+    print(f"main_child1={main_child}")
 
     # 取得したフレーム内の文字を読み込む
     scan_frame(root, img_reader)
@@ -581,13 +460,21 @@ if __name__ == '__main__':
         except:
             print(f"skip index={row_index}")
 
-
-
+    t1 = Frame("test", [0, 0, 100, 100], None)
+    t2 = Frame("child", [10, 10, 50, 50], t1)
+    t31 = Frame("sub-child31", [10, 10, 50, 50], t2)
+    t32 = Frame("sub-child32", [50, 10, 50, 50], t2)
+    t1j = t1.to_json2()
+    print(f"t1j={t1j}")
+    with open("./tmp/test_info.json", "w") as f:
+        json.dump(t1j, f, ensure_ascii=False, indent=4)
 
     # フレーム情報をJSONデータファイルとして書き込む
-    d = root.to_dict()
+    d = root.to_json2()
+    print(f"d={d}")
     with open("./tmp/frame_info.json", "w") as f:
-        json.dump(d, f, indent=4)
+        f.write(str(d))
+        json.dump(d, f, ensure_ascii=False, indent=2)
 
     exit()
 
