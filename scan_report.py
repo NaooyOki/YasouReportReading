@@ -14,150 +14,9 @@ from marshmallow import Schema, fields
 
 from utility import *
 from trim_report_frame import *
-import text_scan
-
-
-class MarkImageParser():
-    def __init__(self) -> None:
-        self.maskImage = None
-
-    def readMarkBase(self, base_img, verify_num:int=0):
-        """
-        蕾 花 実 などが書かれた下地を元にマスクを作る
-        
-        Params
-            base_img: cell_imgのベースになるイメージ。下地だけが書かれており、cell_imgとの差分で、〇を検出する。
-        
-        Return
-            成否
-        """
-        # 四隅をマスクする
-        maskH = base_img.shape[0]
-        maskW = base_img.shape[1]
-        maskWH = min(maskH, maskW)
-
-        # 四隅をマスクする
-        base = base_img.copy()
-        base[0:5, 0:base.shape[1]] = 0
-        base[base.shape[0]-5:base.shape[0], 0:base.shape[1]] = 0
-        base[0:base.shape[0], 0:5] = 0
-        base[0:base.shape[0], base.shape[1]-5:base.shape[1]] = 0
-        
-        # マスクしやすくするために、下地をぼかす
-        debugImgWrite(base, "step5", "mask0_raw")
-        mask = cv2.blur(base,(5,5))
-        debugImgWrite(mask, "step5", "mask1_blur")
-
-        # マスクの下地を作る
-        mask0 = np.zeros((base_img.shape[0], base_img.shape[1]), np.uint8)
-        mask0[0:5, 0:mask0.shape[1]] = 255
-        mask0[mask0.shape[0]-5:mask0.shape[0], 0:mask0.shape[1]] = 255
-        mask0[0:mask0.shape[0], 0:5] = 255
-        mask0[0:mask0.shape[0], mask0.shape[1]-5:mask0.shape[1]] = 255
-        debugImgWrite(mask0, "step5", "mask2_mask0")
-
-        # 下地の中から、文字と思われる塊を検出する "蕾  花  実  胞" なら4つの塊
-        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        symbols = []
-        detected = []
-        minWH = min(mask0.shape[0], mask0.shape[1])/3    # 幅か高さの狭いほうの1/3以上の領域だけをマークの下地とみなす
-        for j, contour in enumerate(contours):
-            size = cv2.contourArea(contour)
-            if (size > minWH * minWH):
-                x,y,w,h = cv2.boundingRect(contour)
-                if ((w > minWH) and (h > minWH)):
-                    symbols.append((x,y,w,h))
-                    detected.append(False)
-                    cv2.rectangle(mask0, (x, y), (x+w, y+h), 255, -1)
-        # 左から順にソートする
-        symbols = sorted(symbols, key=lambda s: s[0])
-        util.debugImgWrite(mask0, "step5", "mask2_mask0")
-        self.maskImage = mask0
-        self.symbols = symbols
-
-        # 〇を検出する領域を計算する
-        self.symbolAreas = []
-        for symbol in symbols:
-            centerX = symbol[0] + symbol[2]/2
-            centerY = symbol[1] + symbol[3]/2
-            symbolArea = (max(centerX - maskWH/2, 0), max(centerY - maskWH/2, 0), maskWH, maskWH)
-            self.symbolAreas.append(symbolArea)
-
-        if (verify_num > 0):
-            assert len(symbols) == verify_num, f"マスクの数({len(symbols)})が期待({verify_num})と一致しません"
-
-
-
-
-    def detectMarks(self, cell_img):
-        """
-        蕾 花 実 などの下地を囲む、〇を検出する
-        
-        Params
-            cell_img: 検出対象のイメージ。0~複数の〇で囲まれていることを想定している。
-        
-        Return
-            検出有無(True/Falase)のリスト
-                True: マークで囲まれている
-                False: 何も囲まれていない(Baseと同じ)
-        """
-
-        detected1 = [0] * len(self.symbols)
-        detected2 = [0] * len(self.symbols)
-
-
-        # イメージサイズをもとに、検出する図形の最小値を決めておく
-        img_width = cell_img.shape[1]
-        img_height = cell_img.shape[0]
-        min_width = img_width * 0.3 / len(self.symbols)
-        min_height = img_height * 0.3
-        
-
-        # 検出対象イメージを下地でマスクし、下地以外のイメージを摘出する
-        mask2 = cv2.resize(cv2.bitwise_not(self.maskImage), (img_width, img_height))
-        marks = cv2.bitwise_and(cell_img, mask2)
-        util.debugImgWrite(marks, "step5", "marks0_raw")
-        marks2 = cv2.blur(marks,(5,5))
-        util.debugImgWrite(marks2, "step5", "marks1_blur")
-
-        # マークを検出する
-        contours, hierarchy = cv2.findContours(marks2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for i, contour in enumerate(contours):
-            # 輪郭領域を求めて、輪郭が囲むシンボルの位置を計算する
-            (x, y, w, h) = cv2.boundingRect(contour)
-            if ((w < min_width) and (h < min_height)):
-                continue
-
-            # 軌跡を囲む矩形内に、シンボルの中心が含まれていれば、〇とみなす
-            for j, bound in enumerate(self.symbols):
-                # 中心点を含む領域なら、〇とみなす
-                if ((x < bound[0]+bound[2]/2 < x+w) and (y < bound[1]+bound[3]/2 < y+h)):
-                    # print(f"detected mark: position={j}")
-                    detected1[j] = 1
-                    cv2.rectangle(marks, (x, y), (x+w, y+h), 255, 2)
-
-            # 軌跡の重心がシンボルの周辺にあれば、〇とみなす
-            mu = cv2.moments(contour)
-            mx, my = int(mu["m10"]/mu["m00"]) , int(mu["m01"]/mu["m00"])        
-            for j, bound in enumerate(self.symbolAreas):
-                if ((bound[0] < mx < bound[0]+bound[2]) and (bound[1] < my < bound[1]+bound[3])):
-                    # print(f"detected mark: position={j}")
-                    detected2[j] = 1
-                    cv2.rectangle(marks, (x, y), (x+w, y+h), 255, 2)
-
-
-        detected = np.add(detected1, detected2)
-        if (detected1 != detected2):
-            print(f"シンボルの検出結果が違います。detected={detected1}, detected2={detected2}\n")
-
-
-#        for i in range(0, len(self.symbols)):
-#            if (detected[i] != detected2[i]):
-#                print(f"シンボルの検出結果が違います。detected={detected[i]}, detected2={detected2[i]}\n")
-
-        util.debugImgWrite(marks, "step5", "marks3_detected")
-        
-        return(detected)        
+from text_scan import *
+from frame_info import *
+from mark_parser import *
 
 
 class TableImageParser:
@@ -312,7 +171,7 @@ def YesNoMark(flag):
 
 # main
 g_skipText=False
-if __name__ == '__main__':
+if __name__ == '__main2__':
     args = sys.argv
     if 2 > len(args):
         print(f"Usage {args[0]} [--skipText] image_file")
@@ -375,4 +234,120 @@ if __name__ == '__main__':
                     print(f"読み込み処理終了:{file}")
 
                     
+# main
+if __name__ == '__main__':
+    test_file = "./record/202403/202403B01.JPG"
+    #test_file = "./template/PlantsInspectReport_v1.1.jpg"
+    cache_file = "./cache/" + os.path.basename(test_file) + ".pickle"
+    img = cv2.imread(test_file)
+    trim_img = trim_report_frame.trim_paper_frame(img)
+    trim_img2 = trim_report_frame.trim_inner_mark2(trim_img)
+
+    # 画像をグレースケールにして白黒反転する
+    img_gray = cv2.cvtColor(trim_img2, cv2.COLOR_BGR2GRAY)
+    ret, scan_image = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+
+    # OCR機能を使ってテキスト情報を読み取る
+    img_reader = text_scan.VisonImgTextReader()
+    if (os.path.exists(cache_file)):
+        print("read cache")
+        img_reader.load_file(cache_file)
+    else:
+        print("scan and create cache")
+        img_reader.read_image(trim_img2)
+        img_reader.save_file(cache_file)
+    
+    # 画像を読み取り、フレーム情報を読み取る
+    frame_detector = FrameDetector()
+    root = frame_detector.parse_image(trim_img2)   
+    root_child = frame_detector.detect_sub_frames(root, 0)
+    print(f"root_child={root_child}")
+
+    # ヘッダを取り出す
+    head = root.get_frame_in_cluster(0, 0)
+    head_child = frame_detector.detect_sub_frames(head, 1)
+    print(f"head_child={root_child}")
+    head_date = head.get_frame_in_cluster(0, 0)
+    head_member = head.get_frame_in_cluster(1, 0)
+    head_wed = head.get_frame_in_cluster(0, 1)
+
+    # コースを取り出す
+    course = root.get_frame_in_cluster(1, 0)
+    course_child = frame_detector.detect_sub_frames(course, 1)
+    print(f"course_child={course_child}")
+    course_route = course.get_frame_in_cluster(0, 0)
+    course_page = course.get_frame_in_cluster(0, 1)
+
+    # メイン部分を取り出す
+    main = root.get_frame_in_cluster(2, 0)
+    main_child = frame_detector.detect_table_frame(main, 1)
+    #main_child = frame_detector.detect_sub_frames(main, 1)
+    print(f"main_child1={main_child}")
+
+    # 取得したフレーム内の文字をまとめて読み込む
+    scan_frame(root, img_reader)
+
+    # 取り出した情報を表示する
+    print(f"head_date: {head_date.value}")
+    print(f"head_member: {head_member.value}")
+    print(f"head_wed: {head_wed.value}")
+    
+    print(f"course_route: {course_route.value}")
+    print(f"course_page: {course_page.value}")
+
+    # 蕾花実列用のパーサーを作成
+    main_stat_header:Frame = main.get_frame_in_cluster(0, 2)
+    stats_header_image = main_stat_header.get_image(scan_image)
+    stat_parser = MarkImageParser()
+    stat_parser.readMarkBase(stats_header_image, verify_num=4)
+
+    # 採取列用のパーサーを作成
+    main_samp_header:Frame = main.get_frame_in_cluster(0, 3)
+    samp_header_image = main_samp_header.get_image(scan_image)
+    samp_parser = MarkImageParser()
+    samp_parser.readMarkBase(samp_header_image, verify_num=1)
+
+    # メイン部分
+    for row_index in range(1, len(main.cluster_list_row)):
+        main_no = main.get_frame_in_cluster(row_index, 0)
+        main_plant = main.get_frame_in_cluster(row_index, 1)
+        
+        main_stat = main.get_frame_in_cluster(row_index, 2)
+        stat_image = main_stat.get_image(scan_image)
+        detected_stat = stat_parser.detectMarks(stat_image)
+        main_stat.value = detected_stat
+
+        main_sample = main.get_frame_in_cluster(row_index, 3)
+        samp_image = main_sample.get_image(scan_image)
+        detected_samp = samp_parser.detectMarks(samp_image)
+        main_sample.value = detected_samp
+
+        main_note = main.get_frame_in_cluster(row_index, 4)
+        try:
+            print(f"No:{main_no.value}, plant:{main_plant.value}, kind:{main_stat.value}, sample:{main_sample.value}, note:{main_note.value}")
+        except:
+            print(f"skip index={row_index}")
+
+    # 読み取り結果を出力する
+    csvfile = test_file.upper().replace(".JPG", "") + "_result.csv"
+    print(f"csvに出力 {csvfile}")
+    with open(csvfile, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([test_file])
+        writer.writerow([head_date.value, head_wed.value])
+        writer.writerow([head_member.value])
+        writer.writerow([course_route.value, course_page.value])
+        writer.writerow(["No","区間","種名","","蕾","花","実","胞子","採種","備考"])
+        for row_index in range(1, len(main.cluster_list_row)):
+            main_no = main.get_frame_in_cluster(row_index, 0)
+            main_plant = main.get_frame_in_cluster(row_index, 1)
+            main_stat = main.get_frame_in_cluster(row_index, 2)
+            stat = main_stat.value
+            main_samp = main.get_frame_in_cluster(row_index, 3)
+            samp = main_samp.value
+            main_note = main.get_frame_in_cluster(row_index, 4)
+            assert len(stat) == 4, f"蕾, 花, 実, 胞子の読み込みに失敗しています: {str(stat)}"
+            assert len(samp) == 1, f"採種の読み込みに失敗しています: {str(samp)}"
+            writer.writerow([main_no.value,course_route.value,main_plant.value,"",YesNoMark(stat[0]),YesNoMark(stat[1]),YesNoMark(stat[2]),YesNoMark(stat[3]),YesNoMark(samp[0]), main_note.value])
 

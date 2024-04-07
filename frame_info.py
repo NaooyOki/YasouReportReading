@@ -87,6 +87,11 @@ class Frame:
             rect[1] += parent.rect[1]
             parent = parent.parent
         return rect 
+    
+    def get_image(self, image):
+        rect = self.abs_rect()
+        cropped_image = image[rect[1]:rect[1]+rect[3], rect[0]:rect[0]+rect[2]]
+        return cropped_image
 
     """
     def to_dict(self) -> dict:
@@ -151,7 +156,7 @@ class Frame:
         self.cluster_list_col = self.create_claster_list_sub(Cluster.DIRECT_COL)
         return
 
-    def get_frame_in_cluster(self, col_index, row_index):
+    def get_frame_in_cluster(self, col_index, row_index) -> "Frame":
         try:
             cluster = self.cluster_list_row[col_index]
             frame_name = cluster.frames[row_index]
