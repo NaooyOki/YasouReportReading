@@ -233,13 +233,50 @@ if __name__ == '__main2__':
                     
                     print(f"読み込み処理終了:{file}")
 
+@dataclass
+class YasouRecord:
+    STAT_NO: ClassVar[int] = 0
+    STAT_YES: ClassVar[int] = 2
+    STAT_UNCERTURN: ClassVar[int] = 1
+
+    index:int = 0
+    plant_name:str = ""
+    stat_tubomi:int = 0
+    stat_flower:int = 0
+    stat_seed:int = 0
+    stat_houshi:int = 0
+    note:str = ""
+
+@dataclass
+class YasouReportInfo:
+    date:str
+    date_year:str = field(default="", init=False)
+    date_month:str = field(default="", init=False)
+    date_day:str = field(default="", init=False)
+    course_name:str
+    course_page:int
+    member:str
+    records:List[YasouRecord] = field(default_factory=list, init=False)
+
+    def __post_init__(self):
+        # 年、月、日を抽出する
+        pattern = r"(\d{4})年(\d{1,2})月(\d{1,2})日"
+        match = re.match(pattern, self.date)
+        if match:
+            # 年、月、日を取得
+            self.date_year = match.group(1)
+            self.date_month = match.group(2)
+            self.date_day = match.group(3)
+
+
+
+    
+
                     
 # main
-if __name__ == '__main__':
-    test_file = "./record/202403/202403B01.JPG"
-    #test_file = "./template/PlantsInspectReport_v1.1.jpg"
-    cache_file = "./cache/" + os.path.basename(test_file) + ".pickle"
-    img = cv2.imread(test_file)
+def scan_report(target_file:str) -> YasouReportInfo:
+    cache_file = "./cache/" + os.path.basename(target_file) + ".pickle"
+    img = cv2.imread(target_file)
     trim_img = trim_report_frame.trim_paper_frame(img)
     trim_img2 = trim_report_frame.trim_inner_mark2(trim_img)
 
@@ -330,24 +367,40 @@ if __name__ == '__main__':
             print(f"skip index={row_index}")
 
     # 読み取り結果を出力する
-    csvfile = test_file.upper().replace(".JPG", "") + "_result.csv"
+    report_info = YasouReportInfo(date=head_date.value, course_name=course_route.value, course_page=course_page.value, member=head_member.value)
+    for row_index in range(1, len(main.cluster_list_row)):
+        main_no = main.get_frame_in_cluster(row_index, 0)
+        main_plant = main.get_frame_in_cluster(row_index, 1)
+        main_stat = main.get_frame_in_cluster(row_index, 2)
+        stat = main_stat.value
+        main_samp = main.get_frame_in_cluster(row_index, 3)
+        samp = main_samp.value
+        main_note = main.get_frame_in_cluster(row_index, 4)
+        assert len(stat) == 4, f"蕾, 花, 実, 胞子の読み込みに失敗しています: {str(stat)}"
+        assert len(samp) == 1, f"採種の読み込みに失敗しています: {str(samp)}"
+        record = YasouRecord(index=int(main_no.value), plant_name=main_plant.value, stat_tubomi=stat[0], stat_flower=stat[1], stat_seed=stat[2], stat_houshi=stat[3], note=main_note.value)
+        report_info.records.append(record)
+
+    return report_info  
+
+
+def output_csv_report(report_info: YasouReportInfo, csvfile:str):
     print(f"csvに出力 {csvfile}")
     with open(csvfile, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow([test_file])
-        writer.writerow([head_date.value, head_wed.value])
-        writer.writerow([head_member.value])
-        writer.writerow([course_route.value, course_page.value])
+        writer.writerow([report_info.date])
+        writer.writerow([report_info.member])
+        writer.writerow([report_info.course_name, report_info.course_page])
         writer.writerow(["No","区間","種名","","蕾","花","実","胞子","採種","備考"])
-        for row_index in range(1, len(main.cluster_list_row)):
-            main_no = main.get_frame_in_cluster(row_index, 0)
-            main_plant = main.get_frame_in_cluster(row_index, 1)
-            main_stat = main.get_frame_in_cluster(row_index, 2)
-            stat = main_stat.value
-            main_samp = main.get_frame_in_cluster(row_index, 3)
-            samp = main_samp.value
-            main_note = main.get_frame_in_cluster(row_index, 4)
-            assert len(stat) == 4, f"蕾, 花, 実, 胞子の読み込みに失敗しています: {str(stat)}"
-            assert len(samp) == 1, f"採種の読み込みに失敗しています: {str(samp)}"
-            writer.writerow([main_no.value,course_route.value,main_plant.value,"",YesNoMark(stat[0]),YesNoMark(stat[1]),YesNoMark(stat[2]),YesNoMark(stat[3]),YesNoMark(samp[0]), main_note.value])
+        for record in report_info.records:
+            writer.writerow([record.index, record.plant_name, "",YesNoMark(record.stat_tubomi),YesNoMark(record.stat_flower),YesNoMark(record.stat_seed),YesNoMark(record.stat_houshi),YesNoMark(0), record.note])
+
+
+# main
+if __name__ == '__main__':
+    test_file = "./record/202403/202403B01.JPG"
+    report_info = scan_report(test_file)
+
+    csvfile = test_file.upper().replace(".JPG", "") + "_result.csv"
+    output_csv_report(report_info, csvfile)
 
