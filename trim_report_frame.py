@@ -277,16 +277,16 @@ def trim_inner_mark2(img):
         # マークと思われる領域サイズ以外はスキップする
         rect = cv2.minAreaRect(contour)
         center, (width, height), angle = rect
-        print(f"detect area = {rect}")
+        #print(f"detect area = {rect}")
         if ((width < min_mark_w) or (height < min_mark_h)):
-            print(f" detect edge mark: skiped small area rect={rect}")
+            #print(f" detect edge mark: skiped small area rect={rect}")
             continue
         elif ((width > max_mark_w) or (height > max_mark_h)):
-            print(f" detect edge mark: skiped big area size={rect}")
+            #print(f" detect edge mark: skiped big area size={rect}")
             continue
             
         # 領域の形状をチェックする
-        print(f" check edge mark: rect={rect}")        
+        #print(f" check edge mark: rect={rect}")        
         epsilon = 0.02*cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, epsilon, True)
         if (len(approx) == 4):
@@ -400,7 +400,7 @@ def getDescAreaInfo2(img, inv=False) -> FrameInfo:
     frame.col_cluster_list = col_cluster_list
     frame.row_cluster_list = row_cluster_list
 
-    print(f"frame: {frame}")
+    #print(f"frame: {frame}")
 
     return frame
 
@@ -439,7 +439,7 @@ def getFrameInfo(img_gray2, img_debug) -> List[CellInfo]:
         if ((w_rel > 10) and (h_rel > 10)):
             # 領域情報を作成する
             cell_info = CellInfo(cont_index, (x_rel, y_rel, w_rel, h_rel))
-            print(f"cell_info:{cell_info}")
+            #print(f"cell_info:{cell_info}")
             #j = cell_info.to_json()
             #print(f"json:{j}")
             info.append(cell_info)

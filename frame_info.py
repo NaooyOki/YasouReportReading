@@ -365,7 +365,7 @@ class FrameDetector:
             for col in range(min(10, len(col_spans))):
                 (col_start, col_end) = col_spans[col]
                 cell = Frame(f"{target_frame.name}_{row}{col}", [col_start, row_start, col_end-col_start, row_end-row_start], target_frame)
-                print(f"create child frame: {cell.__dict__}")
+                #print(f"create child frame: {cell.__dict__}")
         target_frame.create_claster_list()
 
         return target_frame.get_children()
