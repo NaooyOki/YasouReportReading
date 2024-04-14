@@ -4,6 +4,7 @@ import math
 import json
 import glob
 import os
+import re
 
 
 def debugTmpImgRemove():
@@ -91,4 +92,10 @@ def vconcat_resize_min(im_list, interpolation=cv2.INTER_CUBIC):
     im_list_resize = [cv2.resize(im, (w_min, int(im.shape[0] * w_min / im.shape[1])), interpolation=interpolation)
                       for im in im_list]
     return cv2.vconcat(im_list_resize)
-            
+
+def get_match_value(text:str, pattern, error_value="?") -> str:
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1)
+    else:
+        return error_value

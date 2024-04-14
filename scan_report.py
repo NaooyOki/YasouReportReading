@@ -55,9 +55,9 @@ class YasouRecord:
 @dataclass
 class YasouReportInfo:
     date:str
-    date_year:str = field(default="", init=False)
-    date_month:str = field(default="", init=False)
-    date_day:str = field(default="", init=False)
+    date_year:int = field(default=0, init=False)
+    date_month:int = field(default=0, init=False)
+    date_day:int = field(default=0, init=False)
     weather:str = ""
     course_name:str = ""
     course_page:int = 0
@@ -66,13 +66,14 @@ class YasouReportInfo:
 
     def __post_init__(self):
         # 年、月、日を抽出する
-        pattern = r"(\d{4})年(\d{1,2})月(\d{1,2})日"
+        pattern = r".*(\d{4})年(\d{1,2})月(\d{1,2})日.*"
         match = re.match(pattern, self.date)
         if match:
             # 年、月、日を取得
-            self.date_year = match.group(1)
-            self.date_month = match.group(2)
-            self.date_day = match.group(3)
+            self.date_year = int(match.group(1))
+            self.date_month = int(match.group(2))
+            self.date_day = int(match.group(3))
+
 
 
 
@@ -173,7 +174,10 @@ def scan_report(target_file:str) -> YasouReportInfo:
             print(f"skip index={row_index}")
 
     # 読み取り結果を出力する
-    report_info = YasouReportInfo(date=head_date.value, weather=head_wed.value, course_name=course_route.value, course_page=course_page.value, member=head_member.value)
+    route = util.get_match_value(course_route.value, r"([A-Z])\s*コース", "X")
+    page = util.get_match_value(course_page.value, r"(\d+)\s*枚目", "99")
+    member = util.get_match_value(head_member.value, r"調査者:\s*(.+)", "")
+    report_info = YasouReportInfo(date=head_date.value, weather=head_wed.value, course_name=route, course_page=page, member=member)
     for row_index in range(1, len(main.cluster_list_row)):
         main_no = main.get_frame_in_cluster(row_index, 0)
         main_plant = main.get_frame_in_cluster(row_index, 1)
@@ -199,7 +203,7 @@ def output_csv_report(report_info: YasouReportInfo, csvfile:str):
         writer.writerow([report_info.course_name, report_info.course_page])
         writer.writerow(["No","区間","種名","","蕾","花","実","胞子","採種","備考"])
         for record in report_info.records:
-            writer.writerow([record.index, record.plant_name, "", YasouRecord.YesNoMark(record.stat_tubomi),YasouRecord.YesNoMark(record.stat_flower),YasouRecord.YesNoMark(record.stat_seed),YasouRecord.YesNoMark(record.stat_houshi),YasouRecord.YesNoMark(record.sample), record.note])
+            writer.writerow([record.index, report_info.course_name, record.plant_name, "", YasouRecord.YesNoMark(record.stat_tubomi),YasouRecord.YesNoMark(record.stat_flower),YasouRecord.YesNoMark(record.stat_seed),YasouRecord.YesNoMark(record.stat_houshi),YasouRecord.YesNoMark(record.sample), record.note])
 
 
 # main
@@ -222,10 +226,34 @@ if __name__ == '__main__':
 
     debugTmpImgRemove()
     # files = ["./record/202403/202403B01.JPG", "./record/202403/202403B02.JPG"]
+
+    report_list:Dict[str, List[YasouReportInfo]] = dict()
+    folder = os.path.dirname(files[0])
+
     for file in files:
         print(f"読み込み処理開始:{file}")
-        report_info = scan_report(file)
+        report = scan_report(file)
 
-        csvfile = file.upper().replace(".JPG", "") + "_result.csv"
-        output_csv_report(report_info, csvfile)
+        # コース別にレポートのリストを作成する
+        if (report.course_name in report_list):
+            report_list[report.course_name].append(report)
+        else:
+            report_list[report.course_name] = [report]
+
+        print(f"読み込み処理終了:{file}")
+
+
+    for course_reports in report_list.values():
+        course_reports.sort(key=lambda report: report.course_page)
+        marged_report:YasouReportInfo = course_reports[0]
+        for report in course_reports[1:]:
+            marged_report.records.extend(report.records)
+            marged_report.course_page += f",{report.course_page}"
+            if (marged_report.member == ""):
+                marged_report.member = report.member
+
+        csvfile = os.path.join(folder, f"{marged_report.date_year:04}{marged_report.date_month:02}{marged_report.course_name}.csv")
+
+        print(f"CSVファイルに出力:{csvfile}")
+        output_csv_report(marged_report, csvfile)
 
