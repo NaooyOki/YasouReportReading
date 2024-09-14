@@ -99,3 +99,7 @@ def get_match_value(text:str, pattern, error_value="?") -> str:
         return match.group(1)
     else:
         return error_value
+    
+
+def safe_value(obj):
+    return obj.value if obj is not None else 'None'
