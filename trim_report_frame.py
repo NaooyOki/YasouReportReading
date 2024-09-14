@@ -319,9 +319,9 @@ def trim_inner_mark2(img):
             cv2.putText(img_debug, f"rect={rect}, edge={len(approx)}", approx[0][0], cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
 
 
-
     if ((len(anker_area) == 1) and (len(box_area) == 3)):
         # 四隅を発見できた
+        found = True
         center = (img.shape[1]/2, img.shape[0]/2)
         right_bot = min(anker_area[0], key=lambda x: np.linalg.norm(x[0]-center))[0] # 四角形は右下固定
         tri = []
@@ -343,11 +343,12 @@ def trim_inner_mark2(img):
         util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
     else:
         # 四隅が見つからない場合は、イメージをそのまま返す
+        found = False
         print(f"四隅のマークを検出できませんでした。元のイメージをそのまま返します。(box:{len(box_area)}, anker:{len(anker_area)})")
         new_img = img
         
     util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
-    return(new_img)
+    return(new_img, found)
 
 
 def getDescAreaInfo2(img, inv=False) -> FrameInfo:
