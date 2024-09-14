@@ -85,7 +85,9 @@ def scan_report(target_file:str) -> YasouReportInfo:
     cache_file = "./cache/" + os.path.basename(target_file) + ".pickle"
     img = cv2.imread(target_file)
     trim_img = trim_report_frame.trim_paper_frame(img)
-    trim_img2 = trim_report_frame.trim_inner_mark2(trim_img)
+    trim_img2, found = trim_report_frame.trim_inner_mark2(trim_img)
+    if (not found):
+        trim_img2 = trim_report_frame.trim_inner_mark(trim_img)
 
     # 画像をグレースケールにして白黒反転する
     img_gray = cv2.cvtColor(trim_img2, cv2.COLOR_BGR2GRAY)
@@ -133,12 +135,13 @@ def scan_report(target_file:str) -> YasouReportInfo:
     scan_frame(root, img_reader)
 
     # 取り出した情報を表示する
-    print(f"head_date: {head_date.value}")
-    print(f"head_member: {head_member.value}")
-    print(f"head_wed: {head_wed.value}")
+     
+    print(f"head_date: {safe_value(head_date)}")
+    print(f"head_member: {safe_value(head_member)}")
+    print(f"head_wed: {safe_value(head_wed)}")
     
-    print(f"course_route: {course_route.value}")
-    print(f"course_page: {course_page.value}")
+    print(f"course_route: {safe_value(course_route)}")
+    print(f"course_page: {safe_value(course_page)}")
 
     # 蕾花実列用のパーサーを作成
     main_stat_header:Frame = main.get_frame_in_cluster(0, 2)
@@ -203,8 +206,10 @@ def output_csv_report(report_info: YasouReportInfo, csvfile:str):
         writer.writerow([report_info.course_name, report_info.course_page])
         writer.writerow(["No","区間","種名","","蕾","花","実","胞子","採種","備考"])
         for record in report_info.records:
-            writer.writerow([record.index, report_info.course_name, record.plant_name, "", YasouRecord.YesNoMark(record.stat_tubomi),YasouRecord.YesNoMark(record.stat_flower),YasouRecord.YesNoMark(record.stat_seed),YasouRecord.YesNoMark(record.stat_houshi),YasouRecord.YesNoMark(record.sample), record.note])
-
+            try:
+                writer.writerow([record.index, report_info.course_name, record.plant_name, "", YasouRecord.YesNoMark(record.stat_tubomi),YasouRecord.YesNoMark(record.stat_flower),YasouRecord.YesNoMark(record.stat_seed),YasouRecord.YesNoMark(record.stat_houshi),YasouRecord.YesNoMark(record.sample), record.note])
+            except Exception as e:
+                print(f"書き込みエラーが発生しました: {e}")
 
 # main
 g_skipText = False
