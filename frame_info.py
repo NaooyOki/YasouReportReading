@@ -312,12 +312,12 @@ class FrameDetector:
                 # Frameクラスを作る
                 frame = Frame(name=f"frame_{child_index}", rect=[x - target_frame.rect[0], y - target_frame.rect[1], w, h], parent=target_frame)
                 self.cont_index_tbl[frame.name] = child_index
-                print(f"create child frame: {frame}")
+                #print(f"create child frame: {frame}")
                 cv2.rectangle(self.img_debug, (x, y), (x+w, y+h), color[level], trim_offset)
                 cv2.putText(self.img_debug, f"frame: {frame.name}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
             else:
                 # 小さい領域は無視する
-                print(f"skipped small area {x},{y},{w},{h}")
+                #print(f"skipped small area {x},{y},{w},{h}")
                 cv2.rectangle(self.img_debug, (x, y), (x+w, y+h), skip_color, trim_offset)
 
             child_index = self.hierarchy[0][child_index][0]   # 次の輪郭
@@ -394,7 +394,7 @@ def scan_frame(frame:Frame, scanner:text_scan.VisonImgTextReader):
         rect = frame.abs_rect()
         text = scanner.extract_text_from_region(rect[0], rect[1], rect[2], rect[3])
         frame.value = text
-        print(f"scanned text:{text} from {frame.name}:{rect}")
+        #print(f"scanned text:{text} from {frame.name}:{rect}")
 
 # main
 if __name__ == '__main__':

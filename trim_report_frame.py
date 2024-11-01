@@ -447,8 +447,6 @@ def getFrameInfo(img_gray2, img_debug) -> List[CellInfo]:
 
             cv2.rectangle(img_debug, (x, y), (x+w, y+h), (0, 255, 0), trim_offset)
             cv2.putText(img_debug, f"info: {cell_info}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
-        else:
-            print(f"skipped small area {x},{y},{w},{h}")
 
         cont_index = hierarchy[0][cont_index][0]   # 次の領域
 
@@ -536,7 +534,7 @@ def get_rectangle_info(image, contours, hierarchy, target_cont_index, level, img
     
     # 小さい領域は無視する
     if ((w_rel < 0.01) or (h_rel < 0.01)):
-        print(f"skipped small area {x},{y},{w},{h}")
+        # print(f"skipped small area {x},{y},{w},{h}")
         return None
 
     # 子輪郭の情報リストを得る
