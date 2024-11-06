@@ -30,6 +30,7 @@ MANIFEST
 tmp/
 record/
 cache/
+stat_img/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
