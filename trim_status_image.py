@@ -7,60 +7,19 @@ import csv
 import os
 import sys
 import inspect
+
 from dataclasses import dataclass, field, asdict
 from typing import ClassVar
 from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
 
+
+from status_train_info import *
 from utility import *
 from trim_report_frame import *
 from text_scan import *
 from frame_info import *
 from mark_parser import *
-
-
-@dataclass
-class StatRecord:
-    STAT_NO: ClassVar[int] = 0
-    STAT_YES: ClassVar[int] = 2
-    STAT_UNCERTURN: ClassVar[int] = 1
-
-    index:int = 0
-    stat:List[int] = field(default_factory=list)
-    stat_tubomi:int = field(default=STAT_NO, init=False)
-    stat_flower:int = field(default=STAT_NO, init=False)
-    stat_seed:int = field(default=STAT_NO, init=False)
-    stat_houshi:int = field(default=STAT_NO, init=False)
-    sample:int = STAT_NO
-    stat_image:np.ndarray = field(default_factory=np.zeros)
-    sample_image:np.ndarray = field(default_factory=np.zeros)
-
-    def __post_init__(self):
-        assert len(self.stat) == 4
-        self.stat_tubomi = self.stat[0]
-        self.stat_flower = self.stat[1]
-        self.stat_seed = self.stat[2]
-        self.stat_houshi = self.stat[3]
-
-    def YesNoMark(flag:int) -> str:
-        if (flag == 2):
-            return('O')
-        elif (flag == 1):
-            return('?')
-        else:
-            return(' ')
-
-
-
-@dataclass
-class StatReportInfo:
-    file_name:str = ""
-    header:StatRecord = field(init=False)
-    records:List[StatRecord] = field(default_factory=list, init=False)
-
-    def __post_init__(self):
-        self.header = StatRecord(0, [0, 0, 0, 0], 0, np.zeros((2,2)), np.zeros((2,2)))
-        self.records = []
 
 
 
@@ -138,7 +97,7 @@ def scan_report(target_file:str) -> StatReportInfo:
  
     return report_info  
 
-
+"""
 def output_stat_info(report_info: StatReportInfo, filename:str):
     index_size = (64, 64)
     target_size = (370, 64)
@@ -174,20 +133,10 @@ def output_stat_info(report_info: StatReportInfo, filename:str):
     cv2.imwrite(imgfile, stat_img)
 
 def create_numbered_image(no, img_size):
-    """
-    黒背景に行番号を記述した画像を作成する関数
-    Args:
-        no: 列数
-        img_width: 画像の幅
-        img_height: 画像の高さ
-
-    Returns:
-        np.ndarray: 生成された画像
-    """
     img = np.zeros(img_size, dtype=np.uint8)  # 黒背景の画像を作成
     cv2.putText(img, str(no), (10, int(img_size[1]/2)), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
     return img    
-
+"""
 
 # main
 g_skipText = False
@@ -215,5 +164,5 @@ if __name__ == '__main__':
         report = scan_report(file)
         print(f"読み込み処理終了:{file}")
         filename, ext = os.path.splitext(os.path.basename(file))
-        output_stat_info(report, filename)
+        report.write_file("./stat_img/", filename)
 
