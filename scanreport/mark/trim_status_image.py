@@ -14,25 +14,30 @@ from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
 
 
-from status_train_info import *
-from utility import *
-from trim_report_frame import *
-from text_scan import *
-from frame_info import *
-from mark_parser import *
+from .status_train_info import *
+from ..util import *
+from ..frame.trim_report_frame import *
+from ..frame.frame_info import *
+from ..frame import *
+from .mark_parser import *
+
+#scanreport.frame.trim_report_frame import *
+#from scanreport.frame.text_scan import *
+#from scanreport.frame.frame_info import *
+#from scanreport.mark.mark_parser import *
 
 
 
                     
 
-def scan_report(target_file:str) -> StatReportInfo:
+def create_traindata_from_report(target_file:str) -> StatReportInfo:
     report_info = StatReportInfo(file_name=target_file)
 
     img = cv2.imread(target_file)
-    trim_img = trim_report_frame.trim_paper_frame(img)
-    trim_img2, found = trim_report_frame.trim_inner_mark2(trim_img)
+    trim_img = trim_paper_frame(img)
+    trim_img2, found = trim_inner_mark2(trim_img)
     if (not found):
-        trim_img2 = trim_report_frame.trim_inner_mark(trim_img)
+        trim_img2 = trim_inner_mark(trim_img)
 
     # 画像をグレースケールにして白黒反転する
     img_gray = cv2.cvtColor(trim_img2, cv2.COLOR_BGR2GRAY)
@@ -97,72 +102,5 @@ def scan_report(target_file:str) -> StatReportInfo:
  
     return report_info  
 
-"""
-def output_stat_info(report_info: StatReportInfo, filename:str):
-    index_size = (64, 64)
-    target_size = (370, 64)
-    output_path = "./stat_img"
-    csvfile = os.path.join(output_path, f"Stat_{filename}.csv")
-    imgfile = os.path.join(output_path, f"Stat_{filename}.jpg")
 
-    resized_imgs = []
-    print(f"csvに出力 {filename}")
-    with open(csvfile, 'w', newline='', encoding='utf-8') as f:
-        # write metadata
-        writer = csv.writer(f)
-        writer.writerow(["Stat_" + filename, "stat", index_size, target_size])
-        writer.writerow(["No","T","F","M","H","S"])
-
-        # write header
-        writer.writerow([f"00", StatRecord.YesNoMark(0),StatRecord.YesNoMark(0),StatRecord.YesNoMark(0),StatRecord.YesNoMark(0),StatRecord.YesNoMark(0)])
-        resize_img = cv2.resize(report_info.header.stat_image, target_size)
-        index_img = create_numbered_image(0, index_size)
-        resized_imgs.append(cv2.hconcat([index_img, resize_img]))
-
-        # write records
-        for record in report_info.records:
-            try:
-                writer.writerow([f"{record.index:02}", StatRecord.YesNoMark(record.stat_tubomi),StatRecord.YesNoMark(record.stat_flower),StatRecord.YesNoMark(record.stat_seed),StatRecord.YesNoMark(record.stat_houshi),StatRecord.YesNoMark(record.sample)])
-                resize_img = cv2.resize(record.stat_image, target_size)
-                index_img = create_numbered_image(record.index, index_size)
-                resized_imgs.append(cv2.hconcat([index_img, resize_img]))
-            except Exception as e:
-                print(f"書き込みエラーが発生しました: {e}")
-    
-    stat_img = cv2.vconcat(resized_imgs)
-    cv2.imwrite(imgfile, stat_img)
-
-def create_numbered_image(no, img_size):
-    img = np.zeros(img_size, dtype=np.uint8)  # 黒背景の画像を作成
-    cv2.putText(img, str(no), (10, int(img_size[1]/2)), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
-    return img    
-"""
-
-# main
-g_skipText = False
-if __name__ == '__main__':
-    # 引数の読み取り処理
-    args = sys.argv
-    if 3 < len(args):
-        print(f"Usage {args[0]} image_file")
-        exit(-1)
-    for i in range(1, len(args)):
-        arg = args[i]
-        if (arg.startswith('--')):
-            if (arg == "--skipText"):
-                g_skipText = True
-            else:
-                print(f"Ignored invalid option: {arg}")
-        else:
-            files = glob.glob(arg)
-
-    debugTmpImgRemove()
-    #files = ["./record/202403/202403B01.JPG", "./record/202403/202403B02.JPG"]
-
-    for file in files:
-        print(f"読み込み処理開始:{file}")
-        report = scan_report(file)
-        print(f"読み込み処理終了:{file}")
-        filename, ext = os.path.splitext(os.path.basename(file))
-        report.write_file("./stat_img/", filename)
 
