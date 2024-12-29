@@ -12,7 +12,7 @@ def debugTmpImgRemove():
     デバッグモードの場合に、tmpフォルダ以下のイメージファイルを一括削除する
     """
     if (__debug__):
-        file_list = glob.glob("./tmp/*.jpg")
+        file_list = glob.glob("../tmp/*.jpg")
         print(f"remove tmp files")
         for file in file_list:
             # print(f"remove: {file}")
@@ -24,7 +24,7 @@ def debugImgWrite(img, step:str="", detail:str=""):
     デバッグモードの場合に、指定したイメージをファイルに出力する
     """
     if (__debug__):
-        cv2.imwrite(f"./tmp/{step}_{detail}.jpg", img)
+        cv2.imwrite(f"../tmp/{step}_{detail}.jpg", img)
 
 
 

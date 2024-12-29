@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 from google.cloud import vision
 from google.oauth2 import service_account
-import utility as util
+#import util.utility as util
 import json
 import pickle
 from dataclasses import dataclass, field, asdict

@@ -6,7 +6,6 @@ import glob
 import csv
 import os
 import sys
-import utility as util
 import inspect
 from dataclasses import dataclass, field, asdict
 from typing import ClassVar
@@ -16,6 +15,8 @@ from typing import MutableMapping
 from typing import List, Dict, Optional
 import re
 import bisect
+
+from ..util import *
 
 @dataclass_json
 @dataclass
@@ -256,7 +257,7 @@ class FrameDetector:
     
     def parse_image(self, image):
         self.img_debug = image.copy()
-        util.debugImgWrite(self.img_debug, type(self).__name__, "1input")
+        debugImgWrite(self.img_debug, type(self).__name__, "1input")
 
         # 画像をグレースケールにして白黒反転する
         img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -358,7 +359,7 @@ class FrameDetector:
         # 列と行のセルを求める
         col_spans = trimPosList(sorted(cols), skip=4)
         row_spans = trimPosList(sorted(rows), skip=4)
-        util.debugImgWrite(img_debug, "step4", "table")
+        debugImgWrite(img_debug, "step4", "table")
 
         for row in range(min(40, len(row_spans))):
             (row_start, row_end) = row_spans[row]
@@ -384,9 +385,9 @@ def trimPosList(pos_list:List[int], skip:int):
 
 
 
-import trim_report_frame
-import text_scan
-def scan_frame(frame:Frame, scanner:text_scan.VisonImgTextReader):
+#import frame.trim_report_frame as trim_report_frame
+from .text_scan import VisonImgTextReader
+def scan_frame(frame:Frame, scanner:VisonImgTextReader):
     if (len(frame.children) > 0):
         for child in frame.children.values():
             scan_frame(child, scanner)

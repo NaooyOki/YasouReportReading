@@ -123,7 +123,7 @@ def read_statreport_file(dir, filename):
     csvfile = os.path.join(dir, f"{filename}.csv")
     imgfile = os.path.join(dir, f"{filename}.jpg")
 
-    img = cv2.imread(imgfile)
+    img = cv2.imread(imgfile, cv2.IMREAD_GRAYSCALE)
     
     print(f"ファイルを読み込み  {filename}")
     with open(csvfile, 'r', newline='', encoding='utf-8') as f:

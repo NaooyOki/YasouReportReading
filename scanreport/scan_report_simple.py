@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 import math
 import json
@@ -12,15 +11,15 @@ from typing import ClassVar
 from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
 
-from utility import *
-from trim_report_frame import *
-from text_scan import *
-from frame_info import *
-from mark_parser import *
+from scanreport.util.utility import *
+from frame.trim_report_frame import *
+from frame.text_scan import *
+from frame.frame_info import *
+from scanreport.mark.mark_parser import *
 
 
 @dataclass
-class YasouRecord:
+class Moni1000Record:
     STAT_NO: ClassVar[int] = 0
     STAT_YES: ClassVar[int] = 2
     STAT_UNCERTURN: ClassVar[int] = 1
@@ -32,6 +31,7 @@ class YasouRecord:
     stat_flower:int = field(default=STAT_NO, init=False)
     stat_seed:int = field(default=STAT_NO, init=False)
     stat_houshi:int = field(default=STAT_NO, init=False)
+    stat_text:str = ""
     sample:int = STAT_NO
     note:str = ""
 
@@ -53,7 +53,7 @@ class YasouRecord:
 
 
 @dataclass
-class YasouReportInfo:
+class Moni1000ReportInfo:
     date:str
     date_year:int = field(default=0, init=False)
     date_month:int = field(default=0, init=False)
@@ -62,7 +62,7 @@ class YasouReportInfo:
     course_name:str = ""
     course_page:int = 0
     member:str = ""
-    records:List[YasouRecord] = field(default_factory=list, init=False)
+    records:List[Moni1000Record] = field(default_factory=list, init=False)
 
     def __post_init__(self):
         # 年、月、日を抽出する
@@ -81,7 +81,7 @@ class YasouReportInfo:
 
                     
 
-def scan_report(target_file:str) -> YasouReportInfo:
+def scan_moni1000_report(target_file:str) -> Moni1000ReportInfo:
     cache_file = "./cache/" + os.path.basename(target_file) + ".pickle"
     img = cv2.imread(target_file)
     trim_img = trim_report_frame.trim_paper_frame(img)
@@ -111,22 +111,11 @@ def scan_report(target_file:str) -> YasouReportInfo:
     #print(f"root_child={root_child}")
 
     # ヘッダを取り出す
-    head = root.get_frame_in_cluster(0, 0)
-    head_child = frame_detector.detect_sub_frames(head, 1)
-    #print(f"head_child={root_child}")
-    head_date = head.get_frame_in_cluster(0, 0)
-    head_member = head.get_frame_in_cluster(1, 0)
-    head_wed = head.get_frame_in_cluster(0, 1)
 
     # コースを取り出す
-    course = root.get_frame_in_cluster(1, 0)
-    course_child = frame_detector.detect_sub_frames(course, 1)
-    #print(f"course_child={course_child}")
-    course_route = course.get_frame_in_cluster(0, 0)
-    course_page = course.get_frame_in_cluster(0, 1)
 
     # メイン部分を取り出す
-    main = root.get_frame_in_cluster(2, 0)
+    main = root.get_frame_in_cluster(0, 0)
     main_child = frame_detector.detect_table_frame(main, 1)
     #main_child = frame_detector.detect_sub_frames(main, 1)
     #print(f"main_child1={main_child}")
@@ -134,41 +123,14 @@ def scan_report(target_file:str) -> YasouReportInfo:
     # 取得したフレーム内の文字をまとめて読み込む
     scan_frame(root, img_reader)
 
-    # 取り出した情報を表示する
-     
-    print(f"head_date: {safe_value(head_date)}")
-    print(f"head_member: {safe_value(head_member)}")
-    print(f"head_wed: {safe_value(head_wed)}")
-    
-    print(f"course_route: {safe_value(course_route)}")
-    print(f"course_page: {safe_value(course_page)}")
-
-    # 蕾花実列用のパーサーを作成
-    main_stat_header:Frame = main.get_frame_in_cluster(0, 2)
-    stats_header_image = main_stat_header.get_image(scan_image)
-    stat_parser = MarkImageParser()
-    stat_parser.readMarkBase(stats_header_image, verify_num=4)
-
-    # 採取列用のパーサーを作成
-    main_samp_header:Frame = main.get_frame_in_cluster(0, 3)
-    samp_header_image = main_samp_header.get_image(scan_image)
-    samp_parser = MarkImageParser()
-    samp_parser.readMarkBase(samp_header_image, verify_num=1)
-
     # メイン部分
     for row_index in range(1, len(main.cluster_list_row)):
         main_no = main.get_frame_in_cluster(row_index, 0)
         main_plant = main.get_frame_in_cluster(row_index, 1)
         
         main_stat = main.get_frame_in_cluster(row_index, 2)
-        stat_image = main_stat.get_image(scan_image)
-        detected_stat = stat_parser.detectMarks(stat_image)
-        main_stat.value = detected_stat
 
         main_sample = main.get_frame_in_cluster(row_index, 3)
-        samp_image = main_sample.get_image(scan_image)
-        detected_samp = samp_parser.detectMarks(samp_image)
-        main_sample.value = detected_samp
 
         main_note = main.get_frame_in_cluster(row_index, 4)
         try:
@@ -180,24 +142,20 @@ def scan_report(target_file:str) -> YasouReportInfo:
     route = util.get_match_value(course_route.value, r"([A-Z])\s*コース", "X")
     page = util.get_match_value(course_page.value, r"(\d+)\s*枚目", "99")
     member = util.get_match_value(head_member.value, r"調査者:\s*(.+)", "")
-    report_info = YasouReportInfo(date=head_date.value, weather=head_wed.value, course_name=route, course_page=page, member=member)
+    report_info = Moni1000ReportInfo(date=head_date.value, weather=head_wed.value, course_name=route, course_page=page, member=member)
     for row_index in range(1, len(main.cluster_list_row)):
         main_no = main.get_frame_in_cluster(row_index, 0)
         main_plant = main.get_frame_in_cluster(row_index, 1)
         main_stat = main.get_frame_in_cluster(row_index, 2)
-        stat = main_stat.value
         main_samp = main.get_frame_in_cluster(row_index, 3)
-        samp = main_samp.value
         main_note = main.get_frame_in_cluster(row_index, 4)
-        assert len(stat) == 4, f"蕾, 花, 実, 胞子の読み込みに失敗しています: {str(stat)}"
-        assert len(samp) == 1, f"採種の読み込みに失敗しています: {str(samp)}"
-        record = YasouRecord(index=row_index, plant_name=main_plant.value, stat=stat, sample=samp[0], note=main_note.value)
+        record = Moni1000Record(index=row_index, plant_name=main_plant.value, stat=main_stat.value, sample=main_samp.value, note=main_note.value)
         report_info.records.append(record)
 
     return report_info  
 
 
-def output_csv_report(report_info: YasouReportInfo, csvfile:str):
+def output_csv_report(report_info: Moni1000ReportInfo, csvfile:str):
     print(f"csvに出力 {csvfile}")
     with open(csvfile, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -206,10 +164,8 @@ def output_csv_report(report_info: YasouReportInfo, csvfile:str):
         writer.writerow([report_info.course_name, report_info.course_page])
         writer.writerow(["No","区間","種名","","蕾","花","実","胞子","採種","備考"])
         for record in report_info.records:
-            try:
-                writer.writerow([record.index, report_info.course_name, record.plant_name, "", YasouRecord.YesNoMark(record.stat_tubomi),YasouRecord.YesNoMark(record.stat_flower),YasouRecord.YesNoMark(record.stat_seed),YasouRecord.YesNoMark(record.stat_houshi),YasouRecord.YesNoMark(record.sample), record.note])
-            except Exception as e:
-                print(f"書き込みエラーが発生しました: {e}")
+            writer.writerow([record.index, report_info.course_name, record.plant_name, "", YasouRecord.YesNoMark(record.stat_tubomi),YasouRecord.YesNoMark(record.stat_flower),YasouRecord.YesNoMark(record.stat_seed),YasouRecord.YesNoMark(record.stat_houshi),YasouRecord.YesNoMark(record.sample), record.note])
+
 
 # main
 g_skipText = False
@@ -232,19 +188,15 @@ if __name__ == '__main__':
     debugTmpImgRemove()
     # files = ["./record/202403/202403B01.JPG", "./record/202403/202403B02.JPG"]
 
-    report_list:Dict[str, List[YasouReportInfo]] = dict()
+    report_list:Dict[str, Moni1000ReportInfo] = dict()
     folder = os.path.dirname(files[0])
 
     for file in files:
         print(f"読み込み処理開始:{file}")
-        report = scan_report(file)
+        report = scan_moni1000_report(file)
 
         # コース別にレポートのリストを作成する
-        if (report.course_name in report_list):
-            report_list[report.course_name].append(report)
-        else:
-            report_list[report.course_name] = [report]
-
+        report_list[file] = report
         print(f"読み込み処理終了:{file}")
 
 

@@ -12,8 +12,8 @@ from typing import ClassVar
 from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
 
-from utility import *
-from frame_info import *
+from ..util import *
+# import scanreport.util.utility as util
 
 
 class MarkImageParser():
@@ -70,7 +70,7 @@ class MarkImageParser():
                     cv2.rectangle(mask0, (x, y), (x+w, y+h), 255, -1)
         # 左から順にソートする
         symbols = sorted(symbols, key=lambda s: s[0])
-        util.debugImgWrite(mask0, "step5", "mask2_mask0")
+        debugImgWrite(mask0, "step5", "mask2_mask0")
         self.maskImage = mask0
         self.symbols = symbols
 
@@ -115,9 +115,9 @@ class MarkImageParser():
         # 検出対象イメージを下地でマスクし、下地以外のイメージを摘出する
         mask2 = cv2.resize(cv2.bitwise_not(self.maskImage), (img_width, img_height))
         marks = cv2.bitwise_and(cell_img, mask2)
-        util.debugImgWrite(marks, "step5", "marks0_raw")
+        debugImgWrite(marks, "step5", "marks0_raw")
         marks2 = cv2.blur(marks,(5,5))
-        util.debugImgWrite(marks2, "step5", "marks1_blur")
+        debugImgWrite(marks2, "step5", "marks1_blur")
 
         # マークを検出する
         contours, hierarchy = cv2.findContours(marks2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -154,6 +154,6 @@ class MarkImageParser():
 #            if (detected[i] != detected2[i]):
 #                print(f"シンボルの検出結果が違います。detected={detected[i]}, detected2={detected2[i]}\n")
 
-        util.debugImgWrite(marks, "step5", "marks3_detected")
+        debugImgWrite(marks, "step5", "marks3_detected")
         
         return(detected)     

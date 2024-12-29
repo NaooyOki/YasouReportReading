@@ -6,12 +6,15 @@ import glob
 import csv
 import os
 import sys
-import utility as util
 import inspect
 from dataclasses import dataclass, field, asdict
 from typing import ClassVar
 from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
+
+from ..util import *
+
+
 
    
 @dataclass_json
@@ -108,7 +111,7 @@ def trim_paper_frame(img):
     img_debug = img.copy()
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)   # 画像処理のノイズ除去
     ret, img_gray2 = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "1input")            
+    debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "1input")            
 
     # 境界線を見つける
     contours, hierarchy = cv2.findContours(
@@ -128,8 +131,8 @@ def trim_paper_frame(img):
             approx = cv2.approxPolyDP(contour, epsilon, True)
             if (len(approx) < 4):
                 continue
-            (top_left, top_right, bot_left, bot_right) = util.calcRectEdge(contour)
-            trim_img = util.trimAsRectangle(img, top_left, top_right, bot_left, bot_right)
+            (top_left, top_right, bot_left, bot_right) = calcRectEdge(contour)
+            trim_img = trimAsRectangle(img, top_left, top_right, bot_left, bot_right)
             if (__debug__):
                 cv2.drawContours(img_debug, contours, i, (255, 0, 0), 2)
                 cv2.rectangle(img_debug,(x,y),(x+w-1,y+h-1),(0,255,0),2)
@@ -137,7 +140,7 @@ def trim_paper_frame(img):
                 cv2.circle(img_debug, top_right, 20, (0, 255, 255), -1)
                 cv2.circle(img_debug, bot_left, 20, (0, 255, 255), -1)
                 cv2.circle(img_debug, bot_right, 20, (0, 255, 255), -1)
-                util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")            
+                debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")            
             return (trim_img)
     
     #　見つからなかった場合は、用紙全体を写したか、白地の背景と解釈して、イメージ領域をそのまま返す
@@ -155,7 +158,7 @@ def trim_inner_mark(img):
     img_debug = img.copy()
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)   # 画像処理のノイズ除去
     ret, img_gray2 = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    util.debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1gray")
+    debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1gray")
   
     # 境界線を見つける
     contours, hierarchy = cv2.findContours(
@@ -221,7 +224,7 @@ def trim_inner_mark(img):
 
         # 三つの三角について、右下からの距離でソートして、遠い順に左上、右上、左下を求める。
         (left_bot, right_top, left_top) = sorted(tri, key=lambda x: np.linalg.norm(x-right_bot))
-        new_img = util.trimAsRectangle(img, left_top, right_top, left_bot, right_bot)
+        new_img = trimAsRectangle(img, left_top, right_top, left_bot, right_bot)
 
         cv2.putText(img_debug, "left_top", left_top+(0,-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         cv2.putText(img_debug, "right_top", right_top+(0,-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
@@ -229,13 +232,13 @@ def trim_inner_mark(img):
         cv2.putText(img_debug, "right_bot", right_bot+(0,20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         points = np.array([left_top, right_top, right_bot, left_bot]).reshape(1, -1, 2)
         cv2.polylines(img_debug, points, isClosed=True, color=(255, 0, 0), thickness=5)  
-        util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
+        debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
     else:
         # 四隅が見つからない場合は、イメージをそのまま返す
         print(f"四隅のマークを検出できませんでした。元のイメージをそのまま返します。(三角形:{len(tri_area)}, 四角形:{len(box_area)})")
         new_img = img
         
-    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
+    debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
     return(new_img)
 
 def trim_inner_mark2(img):
@@ -249,7 +252,7 @@ def trim_inner_mark2(img):
     img_debug = img.copy()
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)   # 画像処理のノイズ除去
     ret, img_inv = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    util.debugImgWrite(img_inv, inspect.currentframe().f_code.co_name, "1gray")
+    debugImgWrite(img_inv, inspect.currentframe().f_code.co_name, "1gray")
   
     # 境界線を見つける
     contours, hierarchy = cv2.findContours(
@@ -332,7 +335,7 @@ def trim_inner_mark2(img):
         (left_bot, right_top, left_top) = sorted(tri, key=lambda x: np.linalg.norm(x-right_bot))
 
         # 台形補正する
-        new_img = util.trimAsRectangle(img, left_top, right_top, left_bot, right_bot)
+        new_img = trimAsRectangle(img, left_top, right_top, left_bot, right_bot)
 
         cv2.putText(img_debug, "left_top", left_top+(0,-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         cv2.putText(img_debug, "right_top", right_top+(0,-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
@@ -340,14 +343,14 @@ def trim_inner_mark2(img):
         cv2.putText(img_debug, "right_bot", right_bot+(0,20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
         points = np.array([left_top, right_top, right_bot, left_bot]).reshape(1, -1, 2)
         cv2.polylines(img_debug, points, isClosed=True, color=(255, 255, 0), thickness=5)  
-        util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
+        debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
     else:
         # 四隅が見つからない場合は、イメージをそのまま返す
         found = False
         print(f"四隅のマークを検出できませんでした。元のイメージをそのまま返します。(box:{len(box_area)}, anker:{len(anker_area)})")
         new_img = img
         
-    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
+    debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
     return(new_img, found)
 
 
@@ -362,7 +365,7 @@ def getDescAreaInfo2(img, inv=False) -> FrameInfo:
     img_debug = img.copy()
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     ret, img_gray2 = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    util.debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
+    debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
 
     cell_list = getFrameInfo(img_gray2, img_debug)
 
@@ -395,7 +398,7 @@ def getDescAreaInfo2(img, inv=False) -> FrameInfo:
             row_cluster_list.append(new_cluster)
   
     
-    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
+    debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
     frame = FrameInfo(rect = (0, 0, img.shape[1], img.shape[0]))
     frame.cells = cell_list
     frame.col_cluster_list = col_cluster_list
@@ -474,7 +477,7 @@ def getDescAreaInfo(img, inv=False):
     ret, img_gray2 = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     img_w = img_gray2.shape[1]
     img_h = img_gray2.shape[0]
-    util.debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
+    debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
 
     # 境界線を見つける
     contours, hierarchy = cv2.findContours(
@@ -493,7 +496,7 @@ def getDescAreaInfo(img, inv=False):
             info.append(area_info)
         cont_index = hierarchy[0][cont_index][0]   # 次の領域
 
-    util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
+    debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
     return (info)
 
 def get_rectangle_info(image, contours, hierarchy, target_cont_index, level, img_debug):
@@ -575,7 +578,7 @@ def getDescArea(img, inv=False):
     ret, img_gray2 = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     img_w = img_gray2.shape[1]
     img_h = img_gray2.shape[0]
-    util.debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
+    debugImgWrite(img_gray2, inspect.currentframe().f_code.co_name, "1input")
 
     # 境界線を見つける
     contours, hierarchy = cv2.findContours(
@@ -631,7 +634,7 @@ def getDescArea(img, inv=False):
             cv2.drawContours(img_debug, contours, i, (255, 0, 0), 2)
             cv2.putText(img_debug, f"unknown: ({x},{y}) {w}x{h}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
     
-        util.debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
+        debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2output")
     return (main, main_pos, head, head_pos, place, place_pos)
 
 
@@ -643,7 +646,7 @@ if __name__ == '__main__':
     if 2 > len(args):
         print(f"Usage {args[0]} [--skipText] image_file")
     else:
-        util.debugTmpImgRemove()
+        debugTmpImgRemove()
         for i in range(1, len(args)):
             arg = args[i]
             if (arg.startswith('--')):
