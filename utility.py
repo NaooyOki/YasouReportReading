@@ -4,6 +4,7 @@ import math
 import json
 import glob
 import os
+import re
 
 
 def debugTmpImgRemove():
@@ -26,23 +27,7 @@ def debugImgWrite(img, step:str="", detail:str=""):
         cv2.imwrite(f"./tmp/{step}_{detail}.jpg", img)
 
 
-def trimPosList(lst:list(), skip:int = 2) -> list():
-    """
-    隣接する直線を一つに束ねる。表の罫線は太いため、直線検出では複数の直線として得られるため。
-    @param list:list(int)  線の位置
-    @return list:list(start:int, end:int)  束ねた線の位置(始点と終点のタプル) 
-    """
-    trimed = []
-    prev = lst[0]
-    start = prev
-    for pos in lst:
-        if ((pos - prev) > skip):
-            trimed.append((start, prev))
-            start = pos
-        prev = pos
-    trimed.append((start, prev))
 
-    return(trimed)
 
 
 def trimAsRectangle(img, top_left, top_right, bot_left, bot_right):
@@ -107,4 +92,14 @@ def vconcat_resize_min(im_list, interpolation=cv2.INTER_CUBIC):
     im_list_resize = [cv2.resize(im, (w_min, int(im.shape[0] * w_min / im.shape[1])), interpolation=interpolation)
                       for im in im_list]
     return cv2.vconcat(im_list_resize)
-            
+
+def get_match_value(text:str, pattern, error_value="?") -> str:
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1)
+    else:
+        return error_value
+    
+
+def safe_value(obj):
+    return obj.value if obj is not None else 'None'
