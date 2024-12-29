@@ -31,6 +31,8 @@ tmp/
 record/
 cache/
 stat_img/
+teachdata/
+stat_img/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
