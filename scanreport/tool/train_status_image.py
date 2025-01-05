@@ -24,8 +24,8 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 
-from .mark import *
-from .util.utility import *
+from ..mark import *
+from ..util.utility import *
 import matplotlib.pyplot as plt
 
 train_data_dir = "teachdata"
@@ -102,12 +102,11 @@ def get_csv_filenames_without_ext(directory_path):
 
 
 
-def calc_train_param():
-    # 引数の読み取り処理
-    args = sys.argv
-    if 3 < len(args):
-        print(f"Usage {args[0]} trainfile")
-        exit(-1)
+def calc_train_param(folder_path):
+
+    folder_path = os.path.join(folder_path, '**', '*.jpg')
+    files = glob.glob(folder_path)
+
     for i in range(1, len(args)):
         arg = args[i]
         files = glob.glob(arg)
@@ -187,32 +186,6 @@ def calc_train_param():
     model.save('my_model.h5')
 
 
-# main
-g_skipText = False
-def make_train_main():
-    # 引数の読み取り処理
-    args = sys.argv
-    if 3 < len(args):
-        print(f"Usage {args[0]} image_file")
-        exit(-1)
-    for i in range(1, len(args)):
-        arg = args[i]
-        if (arg.startswith('--')):
-            if (arg == "--skipText"):
-                g_skipText = True
-            else:
-                print(f"Ignored invalid option: {arg}")
-        else:
-            files = glob.glob(arg)
 
-    debugTmpImgRemove()
-    #files = ["./record/202403/202403B01.JPG", "./record/202403/202403B02.JPG"]
-
-    for file in files:
-        print(f"読み込み処理開始:{file}")
-        report = create_traindata_from_report(file)
-        print(f"読み込み処理終了:{file}")
-        filename, ext = os.path.splitext(os.path.basename(file))
-        report.write_file("./stat_img/", filename)
 
 

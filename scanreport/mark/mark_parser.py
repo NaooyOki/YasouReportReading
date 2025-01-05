@@ -7,6 +7,7 @@ import csv
 import os
 import sys
 import inspect
+from typing import List, Tuple
 from dataclasses import dataclass, field, asdict
 from typing import ClassVar
 from dataclasses_json import dataclass_json, config
@@ -15,6 +16,236 @@ from marshmallow import Schema, fields
 from ..util import *
 # import scanreport.util.utility as util
 
+
+
+# マークの状態を示すenum
+from enum import Enum
+class MarkStatus(Enum):
+    NO = 0
+    UNCERTUN = 1
+    YES = 2
+
+    def symbol(self) -> str:
+        if (self == MarkStatus.YES):
+            return('O')
+        elif (self == MarkStatus.UNCERTUN):
+            return('?')
+        else:
+            return(' ')
+        
+    def __str__(self) -> str:
+        return self.symbol()
+    
+    @classmethod
+    def read(cls, symbol: str) -> 'MarkStatus':
+        if symbol == 'O':
+            return cls.YES
+        elif symbol == '?':
+            return cls.UNCERTUN
+        else:
+            return cls.NO
+
+
+def trimImage(img:np.ndarray, trim:int) -> np.ndarray:
+    """ 
+    画像の端をトリムした画像を返す
+    """
+    return img[trim:img.shape[0]-trim, trim:img.shape[1]-trim]
+
+def resizeImageWithMaxPooling(img:np.ndarray, width:int, height:int) -> np.ndarray:
+    """
+    白黒の画像を指定したサイズにリサイズする。リサイズする際には、Max Poolingのアルゴリズムを使う。
+    """
+    poolX = calcPoolSize(img.shape[1], width)
+    poolY = calcPoolSize(img.shape[0], height)
+    newImg = np.zeros((height, width), np.uint8)
+    xPos = 0
+    for x in range(0, width):
+        yPos = 0
+        for y in range(0, height):
+            newImg[y, x] = np.max(img[yPos:yPos+poolY[y], xPos:xPos+poolX[x]])
+            yPos += poolY[y]
+        xPos += poolX[x]
+    return newImg
+
+def calcPoolSize(srcSize:int, dstSize:int) -> List[int]:
+    """
+    srcSizeをdstSizeに縮小するための、プーリングサイズの配列を計算する。余りが出る場合、両端に余りを振り分ける。
+    """
+    poolSize = []
+    base_size = srcSize // dstSize
+    mod_size = srcSize % dstSize
+    for i in range(0, dstSize):
+        poolSize.append(base_size)
+        if (i < (mod_size+1)//2):
+            poolSize[i] += 1
+        elif (dstSize-1-i < mod_size//2):
+            poolSize[i] += 1
+    assert sum(poolSize) == srcSize, f"プーリングサイズの合計が元のサイズと一致しません。srcSize={srcSize}, dstSize={dstSize}, poolSize={poolSize}"
+    return poolSize
+
+
+# マーク画像を解析するパーサー
+class MarkImagePaser2():
+    ImageWidth = 32     # 正規化したマーク画像の幅
+    ImageHeight = 32    # 正規化したマーク画像の高さ
+
+    def __init__(self):
+        self.headerImage = None     # ヘッダー部分の画像
+        self.maskImage = None       # ヘッダー部分を元にした、マスク用の画像
+        self.markImage = None       # マーク画像
+        self.maskedMarkImage = None # マスク画像で処理したマーク画像
+    
+    def readMarkBase(self, base):
+        # マスク画像を作成する
+        debugImgWrite(base, inspect.currentframe().f_code.co_name, "maskRaw")
+        self.headerImage = resizeImageWithMaxPooling(base, MarkImagePaser2.ImageWidth, MarkImagePaser2.ImageHeight)
+        self.maskImage = cv2.bitwise_not(self.headerImage)          # マスクにするので白黒反転する
+        debugImgWrite(self.maskImage, inspect.currentframe().f_code.co_name, "maskNormarized")
+
+    def readMark(self, img) -> MarkStatus:
+        """
+        マーク画像を元に、マークの状態を返す
+            img: マーク画像
+            return: マークの状態 (YES, UNCERTUN, NO)
+        """
+        debugImgWrite(img, inspect.currentframe().f_code.co_name, "markRaw")
+
+        # マーク画像を正規化する
+        self.markImage = resizeImageWithMaxPooling(img, MarkImagePaser2.ImageWidth, MarkImagePaser2.ImageHeight)
+        debugImgWrite(self.markImage, inspect.currentframe().f_code.co_name, "markNormarized")
+
+        # マーク画像をマスク画像で処理して、中央の文字の部分を消した画像を取得する
+        self.maskedMarkImage = cv2.bitwise_and(self.markImage, self.maskImage)
+        debugImgWrite(self.maskedMarkImage, inspect.currentframe().f_code.co_name, "markMasked")
+
+        # マーク画像を元に、マークの状態を取得する
+        status = self.parseMarkImg(self.maskedMarkImage)
+        return status
+    
+    def parseMarkImg(self, img) -> MarkStatus:
+        # マーク画像を読み取って、マークの状態を返す
+        # 周辺領域の描写の割合で判断する。中央付近はシンボルをマスクしても、痕跡が残っているため、描写をカウントしない。
+        
+        # 周辺1/4の領域の平均値を得る
+        w = img.shape[1]
+        h = img.shape[0]
+        ratio = 0.25
+        sumTotal = np.sum(img)/255
+        sumCenter = np.sum(img[int(h*ratio):int(h*(1-ratio)), int(w*ratio):int(w*(1-ratio))])/255
+        sumRound = sumTotal - sumCenter
+        areaRound = w*h*(1-(1-2*ratio)*(1-2*ratio))
+        aveRound = sumRound/areaRound
+
+        # マークの判定
+        if (aveRound > 0.1):
+            status = MarkStatus.YES
+        elif (aveRound > 0.02):
+            status = MarkStatus.UNCERTUN
+        else:
+            status = MarkStatus.NO
+
+        # print(f"aveRound={aveRound} -> status={status.symbol()}")
+
+        return status
+
+
+class MarkImagePaerserInfo():
+    def __init__(self, position:Tuple[int, int], parser:MarkImagePaser2) -> None:
+        self.position = position
+        self.parser = parser
+
+
+class MarkListImageParser():
+    """
+    複数の丸印を含む画像を解析するクラス
+    """
+    TrimWidth = 3       # 元の画像の端をトリムする幅
+    WidthRatio = 1.5    # マークの検出エリアの幅をマークの高さの何倍にするか
+
+    def __init__(self) -> None:
+        self.markPaserList = []    # マーク画像のパーサーのリスト
+        self.headerListImage = None         # ヘッダ部分の画像
+        self.headerMaskedListImage = None   # ヘッダ部分のマスク用の画像
+        self.markListImage = None           # マーク部分の画像
+        self.markMaskedListImage = None     # マーク部分をマスクした画像
+    
+    def readMarkHeaderImage(self, img:np.ndarray, verify_num:int=0):
+        """
+        マーク画像のヘッダー部分を読み取る
+        """
+        # 画像解析の前に画像の端をトリムする
+        img = trimImage(img, MarkListImageParser.TrimWidth)
+        debug_img = img.copy()
+        debugImgWrite(debug_img, inspect.currentframe().f_code.co_name, "headerRaw")
+
+        # 文字と思われる塊を検出する "蕾  花  実  胞" なら4つの塊
+        contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        symbols = []
+        detected = []
+        maskWH = min(img.shape[0], img.shape[1])    # マークを検出する正方形のエリアの大きさ
+        minWH = maskWH/4                            # マーク検出エリアの1/4以上の領域だけをマークの下地とみなす
+        for j, contour in enumerate(contours):
+            size = cv2.contourArea(contour)
+            if (size > minWH * minWH):
+                x,y,w,h = cv2.boundingRect(contour)
+                if ((w > minWH) and (h > minWH)):
+                    symbols.append((x,y,w,h))
+                    detected.append(False)
+                    cv2.rectangle(debug_img, (x, y), (x+w, y+h), 255, 2)   # デバッグ用に検出したシンボルを囲む
+      
+        # 左から順にソートする
+        symbols = sorted(symbols, key=lambda s: s[0])
+        debugImgWrite(debug_img, inspect.currentframe().f_code.co_name, "headerDetected")
+        self.maskImageList = symbols
+
+        # マスクの数が期待と一致するか確認する
+        if (verify_num > 0):
+            assert len(symbols) == verify_num, f"マスクの数({len(symbols)})が期待({verify_num})と一致しません"
+        
+        # 〇を検出する領域を計算する
+        self.headerListImage = np.zeros((MarkImagePaser2.ImageHeight, MarkImagePaser2.ImageWidth*len(self.maskImageList)), np.uint8)
+        self.headerMaskedListImage = np.zeros((MarkImagePaser2.ImageHeight, MarkImagePaser2.ImageWidth*len(self.maskImageList)), np.uint8)
+        for i, symbol in enumerate(symbols):
+            centerX = int(symbol[0] + symbol[2]/2)
+            centerY = int(symbol[1] + symbol[3]/2)
+            symbolArea = (int(max(centerX - maskWH/2 * MarkListImageParser.WidthRatio, 0)), int(max(centerY - maskWH/2, 0)), int(maskWH * MarkListImageParser.WidthRatio), maskWH)
+            markParser = MarkImagePaser2()
+            markParser.readMarkBase(img[symbolArea[1]:symbolArea[1]+symbolArea[3], symbolArea[0]:symbolArea[0]+symbolArea[2]])
+            self.markPaserList.append(MarkImagePaerserInfo(symbolArea, markParser))
+            self.headerListImage[0:MarkImagePaser2.ImageHeight, i*MarkImagePaser2.ImageWidth:(i+1)*MarkImagePaser2.ImageWidth] =  markParser.headerImage
+            self.headerMaskedListImage[0:MarkImagePaser2.ImageHeight, i*MarkImagePaser2.ImageWidth:(i+1)*MarkImagePaser2.ImageWidth] =  markParser.maskImage
+
+        debugImgWrite(self.headerListImage, inspect.currentframe().f_code.co_name, "headerList")
+        debugImgWrite(self.headerMaskedListImage, inspect.currentframe().f_code.co_name, "headerListMasked")
+        return self.markPaserList
+
+
+    def readMarkListImage(self, img:np.ndarray) -> List[MarkStatus]:
+        """
+        マーク画像のリストを読み取る
+        """
+        # 画像解析の前に画像の端をトリムする
+        img = trimImage(img, MarkListImageParser.TrimWidth)
+        debug_img = img.copy()
+        debugImgWrite(debug_img, inspect.currentframe().f_code.co_name, "markListRaw")
+        self.markListImage = np.zeros((MarkImagePaser2.ImageHeight, MarkImagePaser2.ImageWidth*len(self.markPaserList)), np.uint8)
+        self.markMaskedListImage = np.zeros((MarkImagePaser2.ImageHeight, MarkImagePaser2.ImageWidth*len(self.markPaserList)), np.uint8)
+
+        # マーク画像を解析する
+        markStatusList = []
+        for i, markParserInfo in enumerate(self.markPaserList):
+            markImg = img[markParserInfo.position[1]:markParserInfo.position[1]+markParserInfo.position[3], markParserInfo.position[0]:markParserInfo.position[0]+markParserInfo.position[2]]
+            markStatus = markParserInfo.parser.readMark(markImg)
+            self.markListImage[0:MarkImagePaser2.ImageHeight, i*MarkImagePaser2.ImageWidth:(i+1)*MarkImagePaser2.ImageWidth] =  markParserInfo.parser.markImage
+            self.markMaskedListImage[0:MarkImagePaser2.ImageHeight, i*MarkImagePaser2.ImageWidth:(i+1)*MarkImagePaser2.ImageWidth] =  markParserInfo.parser.maskedMarkImage
+            markStatusList.append(markStatus)
+            cv2.rectangle(debug_img, (markParserInfo.position[0], markParserInfo.position[1]), (markParserInfo.position[0]+markParserInfo.position[2], markParserInfo.position[1]+markParserInfo.position[3]), 255, 2)   # デバッグ用に検出したシンボルを囲む
+
+        debugImgWrite(debug_img, inspect.currentframe().f_code.co_name, "markListDetected")
+        debugImgWrite(self.markListImage, inspect.currentframe().f_code.co_name, "markList")
+        debugImgWrite(self.markMaskedListImage, inspect.currentframe().f_code.co_name, "markListMasked")
+        return markStatusList
 
 class MarkImageParser():
     def __init__(self) -> None:

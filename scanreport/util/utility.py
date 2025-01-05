@@ -5,6 +5,7 @@ import json
 import glob
 import os
 import re
+from typing import List
 
 
 def debugTmpImgRemove():
@@ -12,7 +13,7 @@ def debugTmpImgRemove():
     デバッグモードの場合に、tmpフォルダ以下のイメージファイルを一括削除する
     """
     if (__debug__):
-        file_list = glob.glob("../tmp/*.jpg")
+        file_list = glob.glob("./tmp/*.jpg")
         print(f"remove tmp files")
         for file in file_list:
             # print(f"remove: {file}")
@@ -24,7 +25,7 @@ def debugImgWrite(img, step:str="", detail:str=""):
     デバッグモードの場合に、指定したイメージをファイルに出力する
     """
     if (__debug__):
-        cv2.imwrite(f"../tmp/{step}_{detail}.jpg", img)
+        cv2.imwrite(f"./tmp/{step}_{detail}.jpg", img)
 
 
 
@@ -103,3 +104,37 @@ def get_match_value(text:str, pattern, error_value="?") -> str:
 
 def safe_value(obj):
     return obj.value if obj is not None else 'None'
+
+
+def concatImageVertical(imglist:List[np.ndarray]) -> np.ndarray:
+    """
+    画像リストを縦に連結する
+    """
+    try:
+        return cv2.vconcat(imglist) if len(imglist) > 0 else None
+    except Exception as e:
+        print(f"concatImageVertical error: {e}")
+        return None
+
+def concatImageHorizontal(imglist:List[np.ndarray]) -> np.ndarray:
+    """
+    画像リストを横に連結する
+    """
+    return cv2.hconcat(imglist) if len(imglist) > 0 else None
+
+def findFilesRecursive(directory_path:str, file_pattern:str) -> List[str]:
+  """
+  指定したフォルダ以下の指定したファイルのパスを取得する関数
+  Args:
+    directory_path: 検索対象のディレクトリのパス
+    file_pattern: 検索するファイルのパターン
+  Returns:
+    見つけたファイルのパスのリスト
+  """
+  try:
+    pattern = os.path.join(directory_path, '**', file_pattern)
+    files = glob.glob(pattern, recursive=True)
+  except Exception as e:
+    print(f"Error: {e}")
+    files = []
+  return files

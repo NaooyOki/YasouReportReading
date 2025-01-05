@@ -26,18 +26,18 @@ from .mark import *
 
 @dataclass
 class YasouRecord:
-    STAT_NO: ClassVar[int] = 0
-    STAT_YES: ClassVar[int] = 2
-    STAT_UNCERTURN: ClassVar[int] = 1
+    #STAT_NO: ClassVar[int] = 0
+    #STAT_YES: ClassVar[int] = 2
+    #STAT_UNCERTURN: ClassVar[int] = 1
 
     index:int = 0
     plant_name:str = ""
-    stat:List[int] = field(default_factory=list)
-    stat_tubomi:int = field(default=STAT_NO, init=False)
-    stat_flower:int = field(default=STAT_NO, init=False)
-    stat_seed:int = field(default=STAT_NO, init=False)
-    stat_houshi:int = field(default=STAT_NO, init=False)
-    sample:int = STAT_NO
+    stat:List[MarkStatus] = field(default_factory=list)
+    stat_tubomi:MarkStatus = field(default=MarkStatus.NO, init=False)
+    stat_flower:MarkStatus = field(default=MarkStatus.NO, init=False)
+    stat_seed:MarkStatus = field(default=MarkStatus.NO, init=False)
+    stat_houshi:MarkStatus = field(default=MarkStatus.NO, init=False)
+    sample:MarkStatus = MarkStatus.NO
     note:str = ""
 
     def __post_init__(self):
@@ -47,15 +47,8 @@ class YasouRecord:
         self.stat_seed = self.stat[2]
         self.stat_houshi = self.stat[3]
 
-    def YesNoMark(flag:int) -> str:
-        if (flag == 2):
-            return('〇')
-        elif (flag == 1):
-            return('？')
-        else:
-            return('')
-
-
+    def YesNoMark(flag:MarkStatus) -> str:
+        return flag.symbol()
 
 @dataclass
 class YasouReportInfo:
@@ -87,12 +80,20 @@ class YasouReportInfo:
                     
 
 def scan_report(target_file:str) -> YasouReportInfo:
-    cache_file = "./cache/" + os.path.basename(target_file) + ".pickle"
+    """
+    野草の調査用紙を読み取り、レポートに取り込むための情報を取得する
+    @param target_file:読み取る画像ファイル
+    @return YasouReportInfo
+    """
+
     img = cv2.imread(target_file)
     trim_img = trim_report_frame.trim_paper_frame(img)
     trim_img2, found = trim_report_frame.trim_inner_mark2(trim_img)
     if (not found):
-        trim_img2 = trim_report_frame.trim_inner_mark(trim_img)
+        trim_img2, found = trim_report_frame.trim_inner_mark(trim_img)
+        if (not found):
+            print(f"四隅のマークが見つかりませんでした。このファイルの解析をスキップします。: {target_file}")
+            return None
 
     # 画像をグレースケールにして白黒反転する
     img_gray = cv2.cvtColor(trim_img2, cv2.COLOR_BGR2GRAY)
@@ -101,13 +102,14 @@ def scan_report(target_file:str) -> YasouReportInfo:
 
     # OCR機能を使ってテキスト情報を読み取る
     img_reader = text_scan.VisonImgTextReader()
-    if (os.path.exists(cache_file)):
-        print("read cache")
-        img_reader.load_file(cache_file)
+    textCacheFile = "./cache/" + os.path.basename(target_file) + ".pickle"     # テキスト情報をキャッシュするファイル
+    if (os.path.exists(textCacheFile) & (os.path.getmtime(textCacheFile) > os.path.getmtime(target_file))):
+        print(f"read cache from {textCacheFile}")
+        img_reader.load_file(textCacheFile)
     else:
         print("scan and create cache")
         img_reader.read_image(trim_img2)
-        img_reader.save_file(cache_file)
+        img_reader.save_file(textCacheFile)
     
     # 画像を読み取り、フレーム情報を読み取る
     frame_detector = FrameDetector()
@@ -151,14 +153,22 @@ def scan_report(target_file:str) -> YasouReportInfo:
     # 蕾花実列用のパーサーを作成
     main_stat_header:Frame = main.get_frame_in_cluster(0, 2)
     stats_header_image = main_stat_header.get_image(scan_image)
-    stat_parser = MarkImageParser()
-    stat_parser.readMarkBase(stats_header_image, verify_num=4)
+    #stat_parser = MarkImageParser()
+    stat_parser = MarkListImageParser()
+    stat_parser.readMarkHeaderImage(stats_header_image, verify_num=4)
 
     # 採取列用のパーサーを作成
     main_samp_header:Frame = main.get_frame_in_cluster(0, 3)
     samp_header_image = main_samp_header.get_image(scan_image)
-    samp_parser = MarkImageParser()
-    samp_parser.readMarkBase(samp_header_image, verify_num=1)
+    samp_parser = MarkListImageParser()
+    samp_parser.readMarkHeaderImage(samp_header_image, verify_num=1)
+
+    # デバッグ用にステータス画像を記録する領域を用意する
+    debug_stat_img = np.zeros((MarkImagePaser2.ImageHeight*(len(main.cluster_list_row) + 1), MarkImagePaser2.ImageWidth*4), np.uint8)
+    debug_stat_img[0:MarkImagePaser2.ImageHeight, 0:MarkImagePaser2.ImageWidth*4] = stat_parser.headerListImage
+    debug_stat_masked_img = np.zeros((MarkImagePaser2.ImageHeight*(len(main.cluster_list_row) + 1), MarkImagePaser2.ImageWidth*4), np.uint8)
+    debug_stat_masked_img[0:MarkImagePaser2.ImageHeight, 0:MarkImagePaser2.ImageWidth*4] = stat_parser.headerMaskedListImage
+
 
     # メイン部分
     for row_index in range(1, len(main.cluster_list_row)):
@@ -167,12 +177,15 @@ def scan_report(target_file:str) -> YasouReportInfo:
         
         main_stat = main.get_frame_in_cluster(row_index, 2)
         stat_image = main_stat.get_image(scan_image)
-        detected_stat = stat_parser.detectMarks(stat_image)
+        # detected_stat = stat_parser.detectMarks(stat_image)
+        detected_stat = stat_parser.readMarkListImage(stat_image)
         main_stat.value = detected_stat
+        debug_stat_img[MarkImagePaser2.ImageHeight*(row_index):MarkImagePaser2.ImageHeight*(row_index+1), 0:MarkImagePaser2.ImageWidth*4] = stat_parser.markListImage
+        debug_stat_masked_img[MarkImagePaser2.ImageHeight*(row_index):MarkImagePaser2.ImageHeight*(row_index+1), 0:MarkImagePaser2.ImageWidth*4] = stat_parser.markMaskedListImage
 
         main_sample = main.get_frame_in_cluster(row_index, 3)
         samp_image = main_sample.get_image(scan_image)
-        detected_samp = samp_parser.detectMarks(samp_image)
+        detected_samp = samp_parser.readMarkListImage(samp_image)
         main_sample.value = detected_samp
 
         main_note = main.get_frame_in_cluster(row_index, 4)
@@ -198,6 +211,9 @@ def scan_report(target_file:str) -> YasouReportInfo:
         assert len(samp) == 1, f"採種の読み込みに失敗しています: {str(samp)}"
         record = YasouRecord(index=row_index, plant_name=main_plant.value, stat=stat, sample=samp[0], note=main_note.value)
         report_info.records.append(record)
+
+    debugImgWrite(debug_stat_img, inspect.currentframe().f_code.co_name, "statImg")
+    debugImgWrite(debug_stat_masked_img, inspect.currentframe().f_code.co_name, "statMaskedImg")
 
     return report_info  
 
@@ -243,6 +259,8 @@ def main():
     for file in files:
         print(f"読み込み処理開始:{file}")
         report = scan_report(file)
+        if (report == None):
+            continue
 
         # コース別にレポートのリストを作成する
         if (report.course_name in report_list):

@@ -214,6 +214,7 @@ def trim_inner_mark(img):
 
 
 
+    found = False
     if ((len(tri_area) == 3) and (len(box_area) == 1)):
         # 四隅を発見できた
         center = (img.shape[1]/2, img.shape[0]/2)
@@ -233,13 +234,15 @@ def trim_inner_mark(img):
         points = np.array([left_top, right_top, right_bot, left_bot]).reshape(1, -1, 2)
         cv2.polylines(img_debug, points, isClosed=True, color=(255, 0, 0), thickness=5)  
         debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
+        found = True
     else:
         # 四隅が見つからない場合は、イメージをそのまま返す
         print(f"四隅のマークを検出できませんでした。元のイメージをそのまま返します。(三角形:{len(tri_area)}, 四角形:{len(box_area)})")
+        found = False
         new_img = img
         
     debugImgWrite(img_debug, inspect.currentframe().f_code.co_name, "2box")
-    return(new_img)
+    return(new_img, found)
 
 def trim_inner_mark2(img):
     """
