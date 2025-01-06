@@ -24,10 +24,6 @@ from typing import List
 
 @dataclass
 class StatRecord:
-    #STAT_NO: ClassVar[int] = 0
-    #STAT_YES: ClassVar[int] = 2
-    #STAT_UNCERTURN: ClassVar[int] = 1
-
     index:int = 0
     stat_tubomi:MarkStatus = MarkStatus.NO
     stat_flower:MarkStatus = MarkStatus.NO
@@ -99,7 +95,7 @@ def str_to_tuple(string):
     print("不正な形式の文字列です。")
     return None
 
-def read_statreport_file(dir, filename):
+def read_statreport_file(dir, filename) -> StatReportInfo:
     report_info = StatReportInfo(filename)
     csvfile = os.path.join(dir, f"{filename}.csv")
     imgfile = os.path.join(dir, f"{filename}.jpg")
@@ -126,12 +122,13 @@ def read_statreport_file(dir, filename):
                 stat_h = MarkStatus.read(row[4])
                 samp = MarkStatus.read(row[5])
                 record = StatRecord(no, stat_t, stat_f, stat_m, stat_h, samp)
-                cropped_img = img[target_size[1]*no:target_size[1]*(no+1), index_size[0]:index_size[0]+target_size[0]]
-                record.stat_image = cropped_img
+                record.stat_image = img[target_size[1]*no:target_size[1]*(no+1), index_size[0]:index_size[0]+(target_size[0]//5*4)]
+                record.sample_image = img[target_size[1]*no:target_size[1]*(no+1), index_size[0]+(target_size[0]//5*4):index_size[0]+target_size[0]]
                 report_info.records.append(record)
 
                 #print(f"record={record}")
-                #cv2.imshow('Cropped Image', cropped_img)
+                #cv2.imshow('stat Image', record.stat_image)
+                #cv2.imshow('sample Image', record.sample_image)
                 #cv2.waitKey(0)
                 #cv2.destroyAllWindows()
 

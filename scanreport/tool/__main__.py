@@ -4,13 +4,14 @@ from .trim_status_image import *
 
 if __name__ == '__main__':
     args = sys.argv
-    if (len(args) != 3):
-        print(f"Usage {args[0]} [-sample | -train] image_folder")
-        exit(-1)
     if (args[1] == "-sample"):
+        if (len(args) != 3):
+            print(f"Usage {args[0]} -sample image_folder")
+            exit(-1)
         make_train_main(args[2])
     elif (args[1] == "-train"):
-        calc_train_param(args[2])
+        calc_train_param("./teachdata")
     else:
-        print(f"Invalid option: {args[1]}")
+        print(f"Usage {args[0]} -sample image_folder")
+        print(f"Usage {args[0]} -train")
         exit(-1)

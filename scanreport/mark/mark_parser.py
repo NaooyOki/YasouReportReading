@@ -13,6 +13,10 @@ from typing import ClassVar
 from dataclasses_json import dataclass_json, config
 from marshmallow import Schema, fields
 
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+
+
 from ..util import *
 # import scanreport.util.utility as util
 
@@ -36,14 +40,28 @@ class MarkStatus(Enum):
     def __str__(self) -> str:
         return self.symbol()
     
+    def to_int(self) -> int:
+        return self.value
+    
     @classmethod
     def read(cls, symbol: str) -> 'MarkStatus':
-        if symbol == 'O':
+        if (symbol == 'O'):
             return cls.YES
-        elif symbol == '?':
+        elif ((symbol == '?') or (symbol == 'E')):
             return cls.UNCERTUN
         else:
             return cls.NO
+    
+    @classmethod
+    def int_to_status(cls, status: int) -> 'MarkStatus':
+        if (status == 2):
+            return cls.YES
+        elif (status == 1):
+            return cls.UNCERTUN
+        else:
+            return cls.NO
+
+
 
 
 def trimImage(img:np.ndarray, trim:int) -> np.ndarray:
@@ -95,6 +113,7 @@ class MarkImagePaser2():
         self.maskImage = None       # ヘッダー部分を元にした、マスク用の画像
         self.markImage = None       # マーク画像
         self.maskedMarkImage = None # マスク画像で処理したマーク画像
+        self.model = None           # 機械学習モデル
     
     def readMarkBase(self, base):
         # マスク画像を作成する
@@ -121,7 +140,14 @@ class MarkImagePaser2():
 
         # マーク画像を元に、マークの状態を取得する
         status = self.parseMarkImg(self.maskedMarkImage)
-        return status
+
+        # マーク画像を機械学習モデルで解析する
+        status2 = self.parseMarkImg2(self.markImage)
+
+        if (status != status2):
+            print(f"マークの状態が違います。status={status}, status2={status2}")
+
+        return status2
     
     def parseMarkImg(self, img) -> MarkStatus:
         # マーク画像を読み取って、マークの状態を返す
@@ -148,6 +174,20 @@ class MarkImagePaser2():
         # print(f"aveRound={aveRound} -> status={status.symbol()}")
 
         return status
+
+    # マーク画像を機械学習モデルで解析する
+    def parseMarkImg2(self, img:np.ndarray) -> MarkStatus:
+        if (self.model == None):
+            self.model = tf.keras.models.load_model('my_model.keras')
+        assert img.shape == (32, 32), "Image shape must be (32, 32)"
+        img = img.reshape(1, 32, 32, 1)
+        pred = self.model.predict(img, verbose=0)
+        stat = np.argmax(pred)
+        if (pred[0][stat] >= 0.8):
+            return MarkStatus.int_to_status(stat)
+        else:
+            print(f"pred = {pred}")
+            return MarkStatus.UNCERTUN
 
 
 class MarkImagePaerserInfo():

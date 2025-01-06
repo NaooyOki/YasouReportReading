@@ -107,10 +107,6 @@ def calc_train_param(folder_path):
     folder_path = os.path.join(folder_path, '**', '*.jpg')
     files = glob.glob(folder_path)
 
-    for i in range(1, len(args)):
-        arg = args[i]
-        files = glob.glob(arg)
-
     x_data = []
     y_data = []
 
@@ -118,50 +114,35 @@ def calc_train_param(folder_path):
 
     for file in files:
         report_info = read_statreport_file("teachdata", file)
-
-        # 画像データはNumPy配列で、shapeは(サンプル数, 64, 380, 1)
-        # 教師データはNumPy配列で、shapeは(サンプル数, 4)
-        # 実際の読み込み方法はデータの形式によって変わる
-
-        stat_sub_img_width = 64
-        stat_sub_clusters = find_clusters_in_image(report_info.records[0].stat_image)
+        #stat_sub_img_width = 32
+        #stat_sub_clusters = find_clusters_in_image(report_info.records[0].stat_image)
         for record in report_info.records:
-            x1_pos = int(stat_sub_clusters[0] - stat_sub_img_width/2)
-            stat_image1 = record.stat_image[0:64, x1_pos:x1_pos+stat_sub_img_width]
-            stat_image1 = resize_image_maxpooling(stat_image1)
-            stat_image1 = stat_image1.reshape(1, 32, 32, 1)
-            x_data.append(stat_image1)
-            y_data.append(int(record.stat_tubomi/2))
+            # 蕾、花、実、胞子の画像を切り出して、マーク結果とともに教師データに加える
+            h = record.stat_image.shape[0]
+            w = record.stat_image.shape[1]//4
+            x_data.append(record.stat_image[0:h, 0:w].reshape(1, 32, 32, 1))
+            y_data.append(record.stat_tubomi.to_int())
+            x_data.append(record.stat_image[0:h, w:w*2].reshape(1, 32, 32, 1))
+            y_data.append(record.stat_flower.to_int())
+            x_data.append(record.stat_image[0:h, w*2:w*3].reshape(1, 32, 32, 1))
+            y_data.append(record.stat_seed.to_int())
+            x_data.append(record.stat_image[0:h, w*3:w*4].reshape(1, 32, 32, 1))
+            y_data.append(record.stat_houshi.to_int())
 
-            x1_pos = int(stat_sub_clusters[1] - stat_sub_img_width/2)
-            stat_image1 = record.stat_image[0:64, x1_pos:x1_pos+stat_sub_img_width]
-            stat_image1 = resize_image_maxpooling(stat_image1)
-            stat_image1 = stat_image1.reshape(1, 32, 32, 1)
-            x_data.append(stat_image1)
-            y_data.append(int(record.stat_flower/2))
+            # サンプル画像とマーク結果を、教師データに加える
+            #x_data.append(record.sample_image)
+            #y_data.append(record.sample.to_int())
 
-            x1_pos = int(stat_sub_clusters[2] - stat_sub_img_width/2)
-            stat_image1 = record.stat_image[0:64, x1_pos:x1_pos+stat_sub_img_width]
-            stat_image1 = resize_image_maxpooling(stat_image1)
-            stat_image1 = stat_image1.reshape(1, 32, 32, 1)
-            x_data.append(stat_image1)
-            y_data.append(int(record.stat_seed/2))
-
-            x1_pos = int(stat_sub_clusters[3] - stat_sub_img_width/2)
-            stat_image1 = record.stat_image[0:64, x1_pos:x1_pos+stat_sub_img_width]
-            stat_image1 = resize_image_maxpooling(stat_image1)
-            stat_image1 = stat_image1.reshape(1, 32, 32, 1)
-            x_data.append(stat_image1)
-            y_data.append(int(record.stat_houshi/2))
-
+    print("Data count:", len(x_data))
+    print("Ans  count:", len(y_data))
 
     # 学習用とテスト用に分割
     x = np.vstack(x_data)
     y = np.array(y_data)
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
 
-    plt.imshow(x_train[0], cmap='gray')
-    plt.show()
+    #plt.imshow(x_train[0], cmap='gray')
+    #plt.show()
 
     # 教師データをone-hotエンコーディング
     #y_train = to_categorical(y_train)
@@ -173,7 +154,7 @@ def calc_train_param(folder_path):
     model.add(Conv2D(32, kernel_size=(3, 3), activation='relu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Flatten())
-    model.add(Dense(2, activation='softmax'))
+    model.add(Dense(3, activation='softmax'))
 
     model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -183,7 +164,8 @@ def calc_train_param(folder_path):
     print('Test accuracy:', test_acc)
 
     # モデルの保存
-    model.save('my_model.h5')
+    model.save('my_model.keras')
+
 
 
 
