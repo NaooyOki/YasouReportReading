@@ -6,9 +6,9 @@ import glob
 import csv
 import os
 import sys
-import utility as util
+import scanreport.util.utility as util
 import inspect
-import trim_report_frame as trim
+import scanreport.frame.trim_report_frame as trim
 
 # main
 g_skipText=False
