@@ -103,7 +103,11 @@ def scan_report(target_file:str) -> YasouReportInfo:
     # OCR機能を使ってテキスト情報を読み取る
     img_reader = text_scan.VisonImgTextReader()
     textCacheFile = "./cache/" + os.path.basename(target_file) + ".pickle"     # テキスト情報をキャッシュするファイル
-    if (os.path.exists(textCacheFile) & (os.path.getmtime(textCacheFile) > os.path.getmtime(target_file))):
+    readCache = False
+    if (os.path.exists(textCacheFile)):
+        if (os.path.getmtime(textCacheFile) > os.path.getmtime(target_file)):
+            readCache = True
+    if (readCache):
         print(f"read cache from {textCacheFile}")
         img_reader.load_file(textCacheFile)
     else:
