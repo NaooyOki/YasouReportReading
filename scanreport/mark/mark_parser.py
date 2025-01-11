@@ -139,13 +139,13 @@ class MarkImagePaser2():
         debugImgWrite(self.maskedMarkImage, inspect.currentframe().f_code.co_name, "markMasked")
 
         # マーク画像を元に、マークの状態を取得する
-        status = self.parseMarkImg(self.maskedMarkImage)
+        # status = self.parseMarkImg(self.maskedMarkImage)
 
         # マーク画像を機械学習モデルで解析する
         status2 = self.parseMarkImg2(self.markImage)
 
-        if (status != status2):
-            print(f"マークの状態が違います。status={status}, status2={status2}")
+        # if (status != status2):
+        #    print(f"マークの状態が違います。status={status}, status2={status2}")
 
         return status2
     
