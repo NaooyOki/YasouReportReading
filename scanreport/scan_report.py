@@ -23,6 +23,8 @@ from .mark import *
 #from scanreport.frame.frame_info import *
 #from scanreport.mark.mark_parser import *
 
+g_skipText = False
+g_forceDate = ""
 
 @dataclass
 class YasouRecord:
@@ -52,27 +54,22 @@ class YasouRecord:
 
 @dataclass
 class YasouReportInfo:
-    date:str
-    date_year:int = field(default=0, init=False)
-    date_month:int = field(default=0, init=False)
-    date_day:int = field(default=0, init=False)
+    date_year:int = 0
+    date_month:int = 0
+    date_day:int = 0
     weather:str = ""
     course_name:str = ""
     course_page:int = 0
     member:str = ""
     records:List[YasouRecord] = field(default_factory=list, init=False)
 
-    def __post_init__(self):
-        # 年、月、日を抽出する
-        pattern = r".*(\d{4})年(\d{1,2})月(\d{1,2})日.*"
-        match = re.match(pattern, self.date)
-        if match:
-            # 年、月、日を取得
-            self.date_year = int(match.group(1))
-            self.date_month = int(match.group(2))
-            self.date_day = int(match.group(3))
-
-
+def get_date_from_text(text:str) -> List[str]:
+    pattern = r".*(\d{4})年(\d{1,2})月(\d{1,2})日.*"
+    match = re.match(pattern, text)
+    if match:
+        return [match.group(1), match.group(2), match.group(3)]
+    else:
+        return ["", "", ""]
 
 
     
@@ -85,6 +82,8 @@ def scan_report(target_file:str) -> YasouReportInfo:
     @param target_file:読み取る画像ファイル
     @return YasouReportInfo
     """
+    global g_skipText
+    global g_forceDate
 
     img = cv2.imread(target_file)
     trim_img = trim_report_frame.trim_paper_frame(img)
@@ -202,7 +201,16 @@ def scan_report(target_file:str) -> YasouReportInfo:
     route = get_match_value(course_route.value, r"([A-Z])\s*コース", "X")
     page = get_match_value(course_page.value, r"(\d+)\s*枚目", "99")
     member = get_match_value(head_member.value, r"調査者:\s*(.+)", "")
-    report_info = YasouReportInfo(date=head_date.value, weather=head_wed.value, course_name=route, course_page=page, member=member)
+    if (g_forceDate != ""):
+        print(f"強制日付:{g_forceDate}")
+        year = int(g_forceDate[0:4])
+        month = int(g_forceDate[4:6])
+        day = 1
+    else:
+        year, month, day = get_date_from_text(head_date.value)
+    print(f"日付:{year}年{month}月{day}日")
+    
+    report_info = YasouReportInfo(date_year=year, date_month=month, date_day=day, weather=head_wed.value, course_name=route, course_page=page, member=member)
     for row_index in range(1, len(main.cluster_list_row)):
         main_no = main.get_frame_in_cluster(row_index, 0)
         main_plant = main.get_frame_in_cluster(row_index, 1)
@@ -226,7 +234,7 @@ def output_csv_report(report_info: YasouReportInfo, csvfile:str):
     print(f"csvに出力 {csvfile}")
     with open(csvfile, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow([report_info.date])
+        writer.writerow([str(report_info.date_year)+str(report_info.date_month).zfill(2)+str(report_info.date_day).zfill(2)])
         writer.writerow([report_info.member])
         writer.writerow([report_info.course_name, report_info.course_page])
         writer.writerow(["No","区間","種名","","蕾","花","実","胞子","採種","備考"])
@@ -237,18 +245,26 @@ def output_csv_report(report_info: YasouReportInfo, csvfile:str):
                 print(f"書き込みエラーが発生しました: {e}")
 
 # main
-g_skipText = False
 def main():
+    global g_skipText
+    global g_forceDate
+
     # 引数の読み取り処理
     args = sys.argv
-    if 3 < len(args):
-        print(f"Usage {args[0]} image_file")
-        exit(-1)
     for i in range(1, len(args)):
         arg = args[i]
-        if (arg.startswith('--')):
-            if (arg == "--skipText"):
+        if (arg.startswith('-')):
+            if (arg == "-skipText"):
                 g_skipText = True
+            elif (arg == "-date"):
+                # 読み取り年月を明示的に指定する
+                g_forceDate = args[i+1]
+                if re.match(r"^\d{6}$", g_forceDate):
+                    print(f"Force date: {g_forceDate}")
+                else:
+                    print(f"Invalid date format: {g_forceDate}")
+                    exit(-1)
+                i += 1
             else:
                 print(f"Ignored invalid option: {arg}")
         else:
