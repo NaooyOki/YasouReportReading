@@ -157,13 +157,13 @@ class Frame:
         self.cluster_list_col = self.create_claster_list_sub(Cluster.DIRECT_COL)
         return
 
-    def get_frame_in_cluster(self, col_index, row_index) -> "Frame":
+    def get_frame_in_cluster(self, row_index, col_index) -> "Frame":
         try:
-            cluster = self.cluster_list_row[col_index]
-            frame_name = cluster.frames[row_index]
+            cluster = self.cluster_list_row[row_index]
+            frame_name = cluster.frames[col_index]
             frame = self.children[frame_name]
         except:
-            print(f"範囲外のインデクスにアクセスしました col={col_index}, row={row_index}")
+            print(f"存在しないフレームの場所にアクセスしました cluster_row={len(self.cluster_list_row)}, col={col_index}, cluster_col={len(cluster.frames)}, row={row_index}")
             return None
         return frame
 

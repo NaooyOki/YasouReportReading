@@ -108,12 +108,13 @@ class MarkImagePaser2():
     ImageWidth = 32     # 正規化したマーク画像の幅
     ImageHeight = 32    # 正規化したマーク画像の高さ
 
-    def __init__(self):
+    def __init__(self, oldParser:bool=False) -> None:
         self.headerImage = None     # ヘッダー部分の画像
         self.maskImage = None       # ヘッダー部分を元にした、マスク用の画像
         self.markImage = None       # マーク画像
         self.maskedMarkImage = None # マスク画像で処理したマーク画像
         self.model = None           # 機械学習モデル
+        self.oldParser = oldParser  # 古いパーサーを使うかどうか
     
     def readMarkBase(self, base):
         # マスク画像を作成する
@@ -138,14 +139,15 @@ class MarkImagePaser2():
         self.maskedMarkImage = cv2.bitwise_and(self.markImage, self.maskImage)
         debugImgWrite(self.maskedMarkImage, inspect.currentframe().f_code.co_name, "markMasked")
 
-        # マーク画像を元に、マークの状態を取得する
-        # status = self.parseMarkImg(self.maskedMarkImage)
-
         # マーク画像を機械学習モデルで解析する
         status2 = self.parseMarkImg2(self.markImage)
 
-        # if (status != status2):
-        #    print(f"マークの状態が違います。status={status}, status2={status2}")
+        # マーク画像を元に、マークの状態を取得する
+        if (self.oldParser):
+            status = self.parseMarkImg(self.maskedMarkImage)
+            if (status != status2):
+                print(f"!!! パーサー間でマークの解析結果が違います。oldParser={status}, newParser={status2}")
+            return status
 
         return status2
     
@@ -196,6 +198,7 @@ class MarkImagePaerserInfo():
         self.parser = parser
 
 
+
 class MarkListImageParser():
     """
     複数の丸印を含む画像を解析するクラス
@@ -203,14 +206,15 @@ class MarkListImageParser():
     TrimWidth = 3       # 元の画像の端をトリムする幅
     WidthRatio = 1.5    # マークの検出エリアの幅をマークの高さの何倍にするか
 
-    def __init__(self) -> None:
+    def __init__(self, oldParser:bool=False) -> None:
         self.markPaserList = []    # マーク画像のパーサーのリスト
         self.headerListImage = None         # ヘッダ部分の画像
         self.headerMaskedListImage = None   # ヘッダ部分のマスク用の画像
         self.markListImage = None           # マーク部分の画像
         self.markMaskedListImage = None     # マーク部分をマスクした画像
+        self.oldParser = oldParser
     
-    def readMarkHeaderImage(self, img:np.ndarray, verify_num:int=0):
+    def readMarkHeaderImage(self, img:np.ndarray, verify_num:int=0) -> List[MarkImagePaerserInfo]:
         """
         マーク画像のヘッダー部分を読み取る
         """
@@ -250,7 +254,7 @@ class MarkListImageParser():
             centerX = int(symbol[0] + symbol[2]/2)
             centerY = int(symbol[1] + symbol[3]/2)
             symbolArea = (int(max(centerX - maskWH/2 * MarkListImageParser.WidthRatio, 0)), int(max(centerY - maskWH/2, 0)), int(maskWH * MarkListImageParser.WidthRatio), maskWH)
-            markParser = MarkImagePaser2()
+            markParser = MarkImagePaser2(self.oldParser)
             markParser.readMarkBase(img[symbolArea[1]:symbolArea[1]+symbolArea[3], symbolArea[0]:symbolArea[0]+symbolArea[2]])
             self.markPaserList.append(MarkImagePaerserInfo(symbolArea, markParser))
             self.headerListImage[0:MarkImagePaser2.ImageHeight, i*MarkImagePaser2.ImageWidth:(i+1)*MarkImagePaser2.ImageWidth] =  markParser.headerImage
@@ -287,9 +291,12 @@ class MarkListImageParser():
         debugImgWrite(self.markMaskedListImage, inspect.currentframe().f_code.co_name, "markListMasked")
         return markStatusList
 
-class MarkImageParser():
+class MarkImageOldParser():
     def __init__(self) -> None:
-        self.maskImage = None
+        self.headerImage = None     # ヘッダー部分の画像
+        self.maskImage = None       # ヘッダー部分を元にした、マスク用の画像
+        self.markImage = None       # マーク画像
+        self.maskedMarkImage = None # マスク画像で処理したマーク画像
 
     def readMarkBase(self, base_img, verify_num:int=0):
         """

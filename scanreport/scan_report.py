@@ -76,7 +76,7 @@ def get_date_from_text(text:str) -> List[str]:
 
                     
 
-def scan_report(target_file:str) -> YasouReportInfo:
+def scan_report(target_file:str, oldMarkParser:bool=False) -> YasouReportInfo:
     """
     野草の調査用紙を読み取り、レポートに取り込むための情報を取得する
     @param target_file:読み取る画像ファイル
@@ -157,13 +157,14 @@ def scan_report(target_file:str) -> YasouReportInfo:
     main_stat_header:Frame = main.get_frame_in_cluster(0, 2)
     stats_header_image = main_stat_header.get_image(scan_image)
     #stat_parser = MarkImageParser()
-    stat_parser = MarkListImageParser()
+    stat_parser = MarkListImageParser(oldMarkParser)
+    stat_parser.oldParser = oldMarkParser
     stat_parser.readMarkHeaderImage(stats_header_image, verify_num=4)
 
     # 採取列用のパーサーを作成
     main_samp_header:Frame = main.get_frame_in_cluster(0, 3)
     samp_header_image = main_samp_header.get_image(scan_image)
-    samp_parser = MarkListImageParser()
+    samp_parser = MarkListImageParser(oldMarkParser)
     samp_parser.readMarkHeaderImage(samp_header_image, verify_num=1)
 
     # デバッグ用にステータス画像を記録する領域を用意する
@@ -210,7 +211,7 @@ def scan_report(target_file:str) -> YasouReportInfo:
         year, month, day = get_date_from_text(head_date.value)
     print(f"日付:{year}年{month}月{day}日")
     
-    report_info = YasouReportInfo(date_year=year, date_month=month, date_day=day, weather=head_wed.value, course_name=route, course_page=page, member=member)
+    report_info = YasouReportInfo(date_year=year, date_month=month, date_day=day, weather=safe_value(head_wed), course_name=route, course_page=page, member=member)
     for row_index in range(1, len(main.cluster_list_row)):
         main_no = main.get_frame_in_cluster(row_index, 0)
         main_plant = main.get_frame_in_cluster(row_index, 1)
@@ -248,6 +249,7 @@ def output_csv_report(report_info: YasouReportInfo, csvfile:str):
 def main():
     global g_skipText
     global g_forceDate
+    oldMarkParser = False
 
     # 引数の読み取り処理
     args = sys.argv
@@ -265,6 +267,10 @@ def main():
                     print(f"Invalid date format: {g_forceDate}")
                     exit(-1)
                 i += 1
+            elif (arg == "-oldMarkParser"):
+                # 古いマークのパース方式を使う
+                print("Use old mark parser")
+                oldMarkParser = True         
             else:
                 print(f"Ignored invalid option: {arg}")
         else:
@@ -278,7 +284,7 @@ def main():
 
     for file in files:
         print(f"読み込み処理開始:{file}")
-        report = scan_report(file)
+        report = scan_report(file, oldMarkParser)
         if (report == None):
             continue
 
