@@ -7,6 +7,7 @@ import csv
 import os
 import sys
 import inspect
+import logging
 from dataclasses import dataclass, field, asdict
 from typing import ClassVar
 from dataclasses_json import dataclass_json, config
@@ -304,13 +305,28 @@ def trim_inner_mark2(img):
                 cv2.RETR_TREE,
                 cv2.CHAIN_APPROX_SIMPLE
             )
-            if (len(sub_contours) == 1):
+
+            # 大きな内部領域だけをカウントする
+            subrect_num = 0
+            for j, sub_contour in enumerate(sub_contours):
+                sub_area = cv2.contourArea(sub_contour)
+                # print(f"sub_area_ratio = {sub_area/(w*h)*100.0}%")
+                if (sub_area < w * h * 0.09):
+                    continue
+                subrect_num += 1
+                sub_rect = cv2.boundingRect(sub_contour)
+                cv2.rectangle(img_debug, (x+sub_rect[0], y+sub_rect[1]), (x+sub_rect[0]+sub_rect[2], y+sub_rect[1]+sub_rect[3]), (0, 255, 0), 2)
+                cv2.putText(img_debug, f"subrect{j}", (x+sub_rect[0], y+sub_rect[1]-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+
+            print(f"subrect_num = {subrect_num}")
+
+            if (subrect_num == 1):
                 # 塗りつぶされたマーク(右下)
                 anker += 1
                 anker_area.append(approx)
                 cv2.drawContours(img_debug, [approx], 0, (255, 0, 0), 5)
                 cv2.putText(img_debug, f"rect={rect}", approx[0][0], cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
-            elif (len(sub_contours) == 2):
+            elif (subrect_num == 2):
                 # 真ん中が空いたマーク(左上、右上、左下のどれか)
                 box += 1
                 box_area.append(approx)
@@ -319,10 +335,12 @@ def trim_inner_mark2(img):
             else:
                 cv2.drawContours(img_debug, [approx], 0, (0, 0, 128), 5)
                 cv2.putText(img_debug, f"rect={rect}, edge={len(approx)}", approx[0][0], cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+                print(f"skiped wrong mark: edge={len(approx)}, rect={rect}, sub_contours={subrect_num}")
 
         else:
             cv2.drawContours(img_debug, [approx], 0, (0, 0, 255), 5)
             cv2.putText(img_debug, f"rect={rect}, edge={len(approx)}", approx[0][0], cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
+            print(f"skiped edge mark: edge={len(approx)}, rect={rect}")
 
 
     if ((len(anker_area) == 1) and (len(box_area) == 3)):
