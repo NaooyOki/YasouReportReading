@@ -25,6 +25,8 @@ from .mark import *
 
 g_skipText = False
 g_forceDate = ""
+g_forceCourse = ""
+g_pageCount = 0
 
 @dataclass
 class YasouRecord:
@@ -72,11 +74,23 @@ def get_date_from_text(text:str) -> List[str]:
         return ["", "", ""]
 
 
-    
+def trim_report_image(file:str) -> np.ndarray:
+    img = cv2.imread(file)
 
-                    
+    # 暗い背景から紙の白い部分を切り抜く
+    trim_img = trim_report_frame.trim_paper_frame(img)
 
-def scan_report(target_file:str, oldMarkParser:bool=False) -> YasouReportInfo:
+    # 四隅のマークで記録部分を切り出す
+    trim_img2, found = trim_report_frame.trim_inner_mark2(trim_img)
+    if (not found):
+        trim_img2, found = trim_report_frame.trim_inner_mark(trim_img)
+        if (not found):
+            print(f"四隅のマークが見つかりませんでした。このファイルの解析をスキップします。: {target_file}")
+            return None
+    return trim_img2
+
+
+def scan_report(img:np.ndarray, file_name:str, oldMarkParser:bool=False) -> YasouReportInfo:
     """
     野草の調査用紙を読み取り、レポートに取り込むための情報を取得する
     @param target_file:読み取る画像ファイル
@@ -84,39 +98,34 @@ def scan_report(target_file:str, oldMarkParser:bool=False) -> YasouReportInfo:
     """
     global g_skipText
     global g_forceDate
+    global g_forceCourse
+    global g_pageCount
 
-    img = cv2.imread(target_file)
-    trim_img = trim_report_frame.trim_paper_frame(img)
-    trim_img2, found = trim_report_frame.trim_inner_mark2(trim_img)
-    if (not found):
-        trim_img2, found = trim_report_frame.trim_inner_mark(trim_img)
-        if (not found):
-            print(f"四隅のマークが見つかりませんでした。このファイルの解析をスキップします。: {target_file}")
-            return None
+    # 通算ページ数
+    g_pageCount += 1
 
     # 画像をグレースケールにして白黒反転する
-    img_gray = cv2.cvtColor(trim_img2, cv2.COLOR_BGR2GRAY)
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     ret, scan_image = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
 
     # OCR機能を使ってテキスト情報を読み取る
     img_reader = text_scan.VisonImgTextReader()
-    textCacheFile = "./cache/" + os.path.basename(target_file) + ".pickle"     # テキスト情報をキャッシュするファイル
+    textCacheFile = "./cache/" + os.path.basename(file_name) + ".pickle"     # テキスト情報をキャッシュするファイル
     readCache = False
     if (os.path.exists(textCacheFile)):
-        if (os.path.getmtime(textCacheFile) > os.path.getmtime(target_file)):
+        if (os.path.getmtime(textCacheFile) > os.path.getmtime(file_name)):
             readCache = True
     if (readCache):
         print(f"read cache from {textCacheFile}")
         img_reader.load_file(textCacheFile)
     else:
         print("scan and create cache")
-        img_reader.read_image(trim_img2)
+        img_reader.read_image(img)
         img_reader.save_file(textCacheFile)
     
     # 画像を読み取り、フレーム情報を読み取る
     frame_detector = FrameDetector()
-    root = frame_detector.parse_image(trim_img2)   
+    root = frame_detector.parse_image(img)   
     root_child = frame_detector.detect_sub_frames(root, 0)
     #print(f"root_child={root_child}")
 
@@ -199,8 +208,14 @@ def scan_report(target_file:str, oldMarkParser:bool=False) -> YasouReportInfo:
             print(f"skip index={row_index}")
 
     # 読み取り結果を出力する
-    route = get_match_value(course_route.value, r"([A-Z])\s*コース", "X")
-    page = get_match_value(course_page.value, r"(\d+)\s*枚目", "99")
+    if (g_forceCourse != ""):
+        route = g_forceCourse
+        page = str(g_pageCount)
+        print(f"強制コース:{route}コース {page}枚目")
+    else:
+        route = get_match_value(course_route.value, r"([A-Z])\s*コース", "X")
+        page = get_match_value(course_page.value, r"(\d+)\s*枚目", "99")
+    
     member = get_match_value(head_member.value, r"調査者:\s*(.+)", "")
     if (g_forceDate != ""):
         print(f"強制日付:{g_forceDate}")
@@ -248,8 +263,13 @@ def output_csv_report(report_info: YasouReportInfo, csvfile:str):
 # main
 def main():
     global g_skipText
-    global g_forceDate
+    global g_forceDate      # 明示的に指定した調査月
+    global g_forceCourse    # 明示的に指定した調査コース
+        
     oldMarkParser = False
+
+    # 解析フレームのテンプレートファイル名
+    frame_template = "frame_config.json"
 
     # 引数の読み取り処理
     args = sys.argv
@@ -266,6 +286,10 @@ def main():
                 else:
                     print(f"Invalid date format: {g_forceDate}")
                     exit(-1)
+                i += 1
+            elif ((arg == "-course") or (arg == "-c")):
+                # 調査コースを明示的に指定する
+                g_forceCourse = args[i+1]
                 i += 1
             elif (arg == "-oldMarkParser"):
                 # 古いマークのパース方式を使う
@@ -284,8 +308,12 @@ def main():
 
     for file in files:
         print(f"読み込み処理開始:{file}")
-        report = scan_report(file, oldMarkParser)
-        if (report == None):
+        img = trim_report_image(file)
+        if (img is None):
+            continue
+            
+        report = scan_report(img, file, oldMarkParser)
+        if (report is None):
             continue
 
         # コース別にレポートのリストを作成する
