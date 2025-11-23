@@ -27,6 +27,7 @@ g_skipText = False
 g_forceDate = ""
 g_forceCourse = ""
 g_pageCount = 0
+g_allOutput = False
 
 @dataclass
 class YasouRecord:
@@ -100,6 +101,7 @@ def scan_report(img:np.ndarray, file_name:str, oldMarkParser:bool=False) -> Yaso
     global g_forceDate
     global g_forceCourse
     global g_pageCount
+    global g_allOutput
 
     # 通算ページ数
     g_pageCount += 1
@@ -265,6 +267,7 @@ def main():
     global g_skipText
     global g_forceDate      # 明示的に指定した調査月
     global g_forceCourse    # 明示的に指定した調査コース
+    global g_allOutput      # 読み込んだファイル順に1つのファイルにまとめて出力する
         
     oldMarkParser = False
 
@@ -291,6 +294,9 @@ def main():
                 # 調査コースを明示的に指定する
                 g_forceCourse = args[i+1]
                 i += 1
+            elif ((arg == "-all") or (arg == "-a")):
+                # 読み込んだファイル順に1つのファイルにまとめて出力する
+                g_allOutput = True
             elif (arg == "-oldMarkParser"):
                 # 古いマークのパース方式を使う
                 print("Use old mark parser")
@@ -306,6 +312,7 @@ def main():
     report_list:Dict[str, List[YasouReportInfo]] = dict()
     folder = os.path.dirname(files[0])
 
+    total_page = 0
     for file in files:
         print(f"読み込み処理開始:{file}")
         img = trim_report_image(file)
@@ -316,11 +323,17 @@ def main():
         if (report is None):
             continue
 
+        course_name = report.course_name
+        total_page += 1
+        if (g_allOutput):
+            course_name = "All"
+            report.course_page = total_page
+
         # コース別にレポートのリストを作成する
-        if (report.course_name in report_list):
-            report_list[report.course_name].append(report)
+        if (course_name in report_list):
+            report_list[course_name].append(report)
         else:
-            report_list[report.course_name] = [report]
+            report_list[course_name] = [report]
 
         print(f"読み込み処理終了:{file}")
 
@@ -328,12 +341,14 @@ def main():
     for course_reports in report_list.values():
         course_reports.sort(key=lambda report: report.course_page)
         marged_report:YasouReportInfo = course_reports[0]
+        marged_pages = f"{course_reports[0].course_page}"
         for report in course_reports[1:]:
             marged_report.records.extend(report.records)
-            marged_report.course_page += f",{report.course_page}"
+            marged_pages += f",{report.course_page}"
             if (marged_report.member == ""):
                 marged_report.member = report.member
 
+        marged_report.course_page = marged_pages
         csvfile = os.path.join(folder, f"{marged_report.date_year:04}{marged_report.date_month:02}{marged_report.course_name}.csv")
 
         print(f"CSVファイルに出力:{csvfile}")
