@@ -4,6 +4,7 @@
     // 詳細情報は次を確認してください: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "Python: Module scanreport.tool",
             "type": "debugpy",
@@ -18,7 +19,7 @@
             "type": "debugpy",
             "request": "launch",
             "module": "scanreport.__main__", // デバッグするモジュールを指定 (例: mypackage.mymodule)
-            "args": "./record/202404/24021801.JPG",
+            "args": "./test/sample1.jpg",
             "console": "integratedTerminal", // ターミナルで出力を見る場合
             "justMyCode": true // 自分のコードのみをデバッグ (ライブラリのコードはスキップ)
         },

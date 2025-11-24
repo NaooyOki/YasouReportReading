@@ -262,7 +262,9 @@ class FrameDetector:
         # 画像をグレースケールにして白黒反転する
         img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         ret, self.image = cv2.threshold(img_gray, 130, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
+        print(f"auto threshold={ret}")
+        debugImgWrite(self.image, type(self).__name__, "1gray")
+        
         # 入力された領域をRootフレームとする
         img_w = self.image.shape[1]
         img_h = self.image.shape[0]
@@ -298,7 +300,7 @@ class FrameDetector:
             #get_frames_sub(self.image, self.contours, self.hierarchy, cont_index, 0, target_frame)
             trim_offset = 10
             color = [(0, 255, 0), (255, 0, 0), (0, 0, 255)]
-            skip_color = (0, 0, 128)
+            skip_color = (0, 128, 128)
 
             # 自身の領域情報を得る
             contour = self.contours[child_index]
@@ -307,23 +309,27 @@ class FrameDetector:
             img_h = self.image.shape[0]
             w_rel = w / img_w
             h_rel = h / img_h
-            
-            # ある程度の大きさがある領域だけをフレーム作成の対象にする
+
+            # 矩形であることを確認する
+            approx = cv2.approxPolyDP(contour, 0.05 * cv2.arcLength(contour, True), True)
+
+            # ある程度の大きさがある矩形領域だけをフレーム作成の対象にする
             if ((w_rel > 0.02) and (h_rel > 0.02)):
                 # Frameクラスを作る
                 frame = Frame(name=f"frame_{child_index}", rect=[x - target_frame.rect[0], y - target_frame.rect[1], w, h], parent=target_frame)
                 self.cont_index_tbl[frame.name] = child_index
-                #print(f"create child frame: {frame}")
+                print(f"create child frame: {frame}")
                 cv2.rectangle(self.img_debug, (x, y), (x+w, y+h), color[level], trim_offset)
                 cv2.putText(self.img_debug, f"frame: {frame.name}", (x, y-20), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0))
             else:
                 # 小さい領域は無視する
-                #print(f"skipped small area {x},{y},{w},{h}")
+                print(f"skipped small area {x},{y},{w},{h}  approx={len(approx)}")
                 cv2.rectangle(self.img_debug, (x, y), (x+w, y+h), skip_color, trim_offset)
 
             child_index = self.hierarchy[0][child_index][0]   # 次の輪郭
 
         target_frame.create_claster_list()
+        debugImgWrite(self.img_debug, type(self).__name__, "2output")
 
         return target_frame.get_children()
 
