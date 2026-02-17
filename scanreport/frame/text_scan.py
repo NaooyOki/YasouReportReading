@@ -137,7 +137,12 @@ class VisonImgTextReader:
         #self.response = vision.types.Document()
         #self.response.ParseDict(data)
 
-    def extract_text_from_region(self, x, y, width, height):
+
+    def extract_text_from_region2(self, rect:tuple[int, int, int, int]) -> str:
+        return self.extract_text_from_region(rect[0], rect[1], rect[2], rect[3])
+
+
+    def extract_text_from_region(self, x, y, width, height) -> str:
         """
         指定された矩形領域内のテキストを抽出します。
         Args:
