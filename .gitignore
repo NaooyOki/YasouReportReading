@@ -31,6 +31,8 @@ tmp/
 record/
 cache/
 stat_img/
+*.log
+
 #teachdata/
 
 # PyInstaller
