@@ -12,6 +12,10 @@ import json
 import pickle
 from dataclasses import dataclass, field, asdict
 from typing import ClassVar
+import logging
+
+# ログを使う
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ScanedTextInfo:
@@ -28,14 +32,14 @@ class PlantNameInfo:
         self.x = pos_x
         self.y = pos_y
     
-class PlantNameListInfo:
-    def __init__(self, num, span) -> None:
-        self.plants = []
-        self.num = num
-        self.span = span
+# class PlantNameListInfo:
+#     def __init__(self, num, span) -> None:
+#         self.plants = []
+#         self.num = num
+#         self.span = span
     
-    def add(self, info:PlantNameInfo):
-        self.plants.append(info)
+#     def add(self, info:PlantNameInfo):
+#         self.plants.append(info)
 
 
 def isKatakana(text) -> bool:
@@ -93,12 +97,17 @@ def ReadPlantsFromImage(img:cv2.Mat, rows:int, cache_file:str):
     namelist = []
     for row in range(rows):
         name = img_reader.extract_text_from_region(0, row*cell_pitch, width, cell_pitch)
-        print(f"plant[{row+1}] = {name}")
+        logger.debug(f"plant[{row+1}] = {name}")
         namelist.append(name)
 
     return(namelist)
 
 class VisonImgTextReader:
+    """
+    Google Cloud Vision APIを使用して画像からテキストを抽出・管理するクラス。
+    特定の矩形領域（ROI）に基づいたテキスト抽出機能を提供する。
+    """
+
     def __init__(self) -> None:
         self.response = None
 
@@ -121,7 +130,7 @@ class VisonImgTextReader:
 
 
     def save_file(self, file_path):
-        print(f"reponse type = {type(self.response)}")
+        logger.debug(f"reponse type = {type(self.response)}")
         #json_str = self.response.to_json()
         #data = json.loads(json_str)
         #data = dict(self.response)
@@ -132,12 +141,17 @@ class VisonImgTextReader:
     def load_file(self, file_path):
         with open(file_path, "rb") as f:
             self.response = pickle.load(f)
-        print(f"reponse type = {type(self.response)}")
+        logger.debug(f"reponse type = {type(self.response)}")
 
         #self.response = vision.types.Document()
         #self.response.ParseDict(data)
 
-    def extract_text_from_region(self, x, y, width, height):
+
+    def extract_text_from_region2(self, rect:tuple[int, int, int, int]) -> str:
+        return self.extract_text_from_region(rect[0], rect[1], rect[2], rect[3])
+
+
+    def extract_text_from_region(self, x, y, width, height) -> str:
         """
         指定された矩形領域内のテキストを抽出します。
         Args:
